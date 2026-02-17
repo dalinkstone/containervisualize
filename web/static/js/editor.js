@@ -9,9 +9,41 @@ class EditorPanel {
         this.dirty = false;
         this.savedContent = '';
         this.mdPreviewMode = false;
+        this._fileSize = 0;
+        this._lineCount = 0;
+
+        // Listen for theme changes to update CodeMirror theme
+        window.addEventListener('theme-change', (e) => {
+            if (this.cm) {
+                const cmTheme = e.detail.theme === 'light' ? 'default' : 'material-darker';
+                this.cm.setOption('theme', cmTheme);
+            }
+        });
     }
 
-    openFile(path, content, contentType) {
+    showLoading(path) {
+        this.container.innerHTML = '';
+        const breadcrumbBar = document.createElement('div');
+        breadcrumbBar.className = 'editor-breadcrumb';
+        breadcrumbBar.textContent = path;
+        this.container.appendChild(breadcrumbBar);
+
+        const loading = document.createElement('div');
+        loading.className = 'editor-loading';
+        loading.innerHTML = '<span class="spinner"></span> Loading file...';
+        this.container.appendChild(loading);
+    }
+
+    getFileInfo() {
+        if (!this.currentPath) return null;
+        return {
+            path: this.currentPath,
+            size: this._fileSize,
+            lines: this._lineCount,
+        };
+    }
+
+    openFile(path, content, contentType, size) {
         // If dirty, prompt before switching
         if (this.dirty && this.currentPath) {
             if (!confirm(`You have unsaved changes to ${this.currentPath}. Discard?`)) {
@@ -23,6 +55,8 @@ class EditorPanel {
         this.dirty = false;
         this.mdPreviewMode = false;
         this.cm = null;
+        this._fileSize = size || 0;
+        this._lineCount = typeof content === 'string' ? content.split('\n').length : 0;
         this.container.innerHTML = '';
 
         // Breadcrumb bar
@@ -150,10 +184,13 @@ class EditorPanel {
             return;
         }
 
+        const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+        const cmTheme = currentTheme === 'light' ? 'default' : 'material-darker';
+
         this.cm = CodeMirror(wrapper, {
             value: content,
             mode: mode,
-            theme: 'material-darker',
+            theme: cmTheme,
             lineNumbers: true,
             matchBrackets: true,
             autoCloseBrackets: true,

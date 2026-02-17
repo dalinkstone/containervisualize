@@ -104,28 +104,7 @@ func (d *DockerClient) listDirExec(ctx context.Context, containerID, path string
 // parseLsOutput parses the raw output from ls -la --time-style=full-iso.
 // Docker exec output uses a multiplexed stream with 8-byte headers per frame.
 func parseLsOutput(raw []byte, dirPath string) ([]model.FileNode, error) {
-	// Demux the docker exec stream: each frame has an 8-byte header
-	// [stream_type(1)][0(3)][size(4 big-endian)][payload]
-	var cleaned []byte
-	buf := raw
-	for len(buf) >= 8 {
-		streamType := buf[0]
-		size := int(buf[4])<<24 | int(buf[5])<<16 | int(buf[6])<<8 | int(buf[7])
-		buf = buf[8:]
-		if size > len(buf) {
-			size = len(buf)
-		}
-		if streamType == 1 { // stdout
-			cleaned = append(cleaned, buf[:size]...)
-		}
-		buf = buf[size:]
-	}
-
-	// If demux produced nothing, try treating the raw bytes as plain text
-	// (some Docker API versions may not use multiplexing)
-	if len(cleaned) == 0 {
-		cleaned = raw
-	}
+	cleaned := demuxExecOutput(raw)
 
 	lines := strings.Split(string(cleaned), "\n")
 	var nodes []model.FileNode
@@ -452,6 +431,115 @@ func (d *DockerClient) ArchiveDir(ctx context.Context, containerID, path string)
 	}
 
 	return reader, nil
+}
+
+// SearchFiles searches for files inside a container by filename or content.
+// If searchContent is true, it uses grep to search file contents.
+// Results are limited to the first 100 matches with a 10-second timeout.
+func (d *DockerClient) SearchFiles(ctx context.Context, containerID, rootPath, query string, searchContent bool) ([]model.FileNode, error) {
+	rootPath, err := ValidatePath(rootPath)
+	if err != nil {
+		return nil, err
+	}
+
+	query = sanitizeSearchQuery(query)
+	if query == "" {
+		return nil, fmt.Errorf("search query is empty after sanitization")
+	}
+
+	ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	var cmd []string
+	if searchContent {
+		cmd = []string{"grep", "-rl", "--include=*", "--", query, rootPath}
+	} else {
+		cmd = []string{"find", rootPath, "-maxdepth", "10", "-name", "*" + query + "*", "-type", "f"}
+	}
+
+	execConfig := container.ExecOptions{
+		Cmd:          cmd,
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	execID, err := d.cli.ContainerExecCreate(ctx, containerID, execConfig)
+	if err != nil {
+		return nil, fmt.Errorf("exec create: %w", err)
+	}
+
+	resp, err := d.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("exec attach: %w", err)
+	}
+	defer resp.Close()
+
+	output, err := io.ReadAll(resp.Reader)
+	if err != nil {
+		if ctx.Err() != nil {
+			return nil, fmt.Errorf("search timed out")
+		}
+		return nil, fmt.Errorf("reading exec output: %w", err)
+	}
+
+	// Demux the docker exec stream
+	cleaned := demuxExecOutput(output)
+
+	lines := strings.Split(strings.TrimSpace(string(cleaned)), "\n")
+	var nodes []model.FileNode
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		if len(nodes) >= 100 {
+			break
+		}
+
+		name := filepath.Base(line)
+		nodes = append(nodes, model.FileNode{
+			Name: name,
+			Path: line,
+			Type: "file",
+		})
+	}
+
+	return nodes, nil
+}
+
+// sanitizeSearchQuery removes shell-special characters from the query.
+func sanitizeSearchQuery(query string) string {
+	var result strings.Builder
+	for _, r := range query {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') ||
+			r == '.' || r == '-' || r == '_' || r == ' ' || r == '/' {
+			result.WriteRune(r)
+		}
+	}
+	return result.String()
+}
+
+// demuxExecOutput extracts stdout from Docker's multiplexed exec stream.
+func demuxExecOutput(raw []byte) []byte {
+	var cleaned []byte
+	buf := raw
+	for len(buf) >= 8 {
+		streamType := buf[0]
+		size := int(buf[4])<<24 | int(buf[5])<<16 | int(buf[6])<<8 | int(buf[7])
+		buf = buf[8:]
+		if size > len(buf) {
+			size = len(buf)
+		}
+		if streamType == 1 { // stdout
+			cleaned = append(cleaned, buf[:size]...)
+		}
+		buf = buf[size:]
+	}
+	if len(cleaned) == 0 {
+		cleaned = raw
+	}
+	return cleaned
 }
 
 // WriteFile writes content to a file inside a container using CopyToContainer.

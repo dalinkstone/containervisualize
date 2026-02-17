@@ -88,50 +88,105 @@ document.addEventListener('DOMContentLoaded', async () => {
     const treeContainer = document.getElementById('file-tree');
     const editorContainer = document.getElementById('editor-panel');
     const headerEl = document.getElementById('header');
-    const statusText = document.getElementById('status-text');
+
+    // Status bar elements
+    const statusConnectionDot = document.querySelector('.status-dot');
+    const statusConnectionText = document.getElementById('status-connection-text');
+    const statusFileInfo = document.getElementById('status-file-info');
+    const statusContainerEl = document.getElementById('status-container');
+
+    // Connection overlay and banner
+    const connectionOverlay = document.getElementById('connection-overlay');
+    const containerStoppedBanner = document.getElementById('container-stopped-banner');
+    const btnReconnect = document.getElementById('btn-reconnect');
 
     // Determine if we're in readonly mode from the container info
     let readonly = false;
+    let containerInfo = null;
+    let connected = true;
 
     const tree = new FileTree(treeContainer);
     const toolbar = new Toolbar(headerEl);
 
-    // Status helper
-    function setStatus(msg) {
-        if (statusText) statusText.textContent = msg;
+    // Status helpers
+    function setConnectionStatus(isConnected) {
+        connected = isConnected;
+        if (statusConnectionDot) {
+            statusConnectionDot.className = `status-dot ${isConnected ? 'connected' : 'disconnected'}`;
+        }
+        if (statusConnectionText) {
+            statusConnectionText.textContent = isConnected ? 'Connected' : 'Disconnected';
+        }
+    }
+
+    function setFileInfo(info) {
+        if (!statusFileInfo) return;
+        if (!info) {
+            statusFileInfo.textContent = '';
+            return;
+        }
+        const parts = [];
+        if (info.path) parts.push(info.path);
+        if (info.size) parts.push(humanSize(info.size));
+        if (info.lines) parts.push(`${info.lines} lines`);
+        parts.push('UTF-8');
+        statusFileInfo.textContent = parts.join('  \u00B7  ');
+    }
+
+    function setContainerStatus(info) {
+        if (!statusContainerEl || !info) return;
+        const statusColor = info.status === 'running' ? 'var(--success)' : 'var(--danger)';
+        statusContainerEl.innerHTML =
+            `<span style="color:${statusColor}">\u25CF</span> ${info.name}`;
+    }
+
+    function humanSize(bytes) {
+        if (!bytes || bytes === 0) return '';
+        if (bytes < 1024) return `${bytes} B`;
+        if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+        if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+        return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
     }
 
     // Load container info
     try {
-        const info = await api.getContainer();
-        toolbar.setContainerInfo(info);
-        document.title = `${info.name} — Container Visualize`;
-        if (info.readonly) readonly = true;
+        containerInfo = await api.getContainer();
+        toolbar.setContainerInfo(containerInfo);
+        setContainerStatus(containerInfo);
+        document.title = `${containerInfo.name} \u2014 Container Visualize`;
+        if (containerInfo.readonly) readonly = true;
+        setConnectionStatus(true);
     } catch (err) {
-        setStatus(`Error: ${err.message}`);
+        setConnectionStatus(false);
+        window.showToast(`Error: ${err.message}`, 'error');
     }
 
     const editor = new EditorPanel(editorContainer, readonly);
 
     // Load root tree
-    setStatus('Loading file tree...');
     try {
         await tree.loadRoot();
-        setStatus('Ready');
     } catch (err) {
-        setStatus(`Error: ${err.message}`);
+        window.showToast(`Error loading tree: ${err.message}`, 'error');
     }
 
     // Wire file selection to editor
     treeContainer.addEventListener('file-select', async (e) => {
         const path = e.detail.path;
-        setStatus(`Loading ${path}...`);
+        editor.showLoading(path);
         try {
             const { content, contentType, size } = await api.getFile(path);
-            editor.openFile(path, content, contentType);
-            setStatus(path);
+            editor.openFile(path, content, contentType, size);
+            setFileInfo(editor.getFileInfo());
         } catch (err) {
-            setStatus(`Error: ${err.message}`);
+            window.showToast(`Error loading file: ${err.message}`, 'error');
+        }
+    });
+
+    // Wire search result selection to tree navigation + file opening
+    toolbar.onSearchSelect(async (result) => {
+        if (result.type === 'file') {
+            await tree.navigateToFile(result.path);
         }
     });
 
@@ -152,8 +207,8 @@ document.addEventListener('DOMContentLoaded', async () => {
                     // Clear editor if the deleted file was open
                     if (editor.currentPath === path) {
                         editor.clear();
+                        setFileInfo(null);
                     }
-                    setStatus('Ready');
                 } catch (err) {
                     window.showToast(`Delete failed: ${err.message}`, 'error');
                 }
@@ -164,12 +219,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Wire refresh button
     toolbar.onRefresh(async () => {
-        setStatus('Refreshing...');
         try {
             await tree.refresh();
-            setStatus('Ready');
+            window.showToast('Tree refreshed', 'info');
         } catch (err) {
-            setStatus(`Error: ${err.message}`);
+            window.showToast(`Error: ${err.message}`, 'error');
         }
     });
 
@@ -185,7 +239,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         input.multiple = true;
         input.addEventListener('change', async () => {
             if (input.files.length === 0) return;
-            setStatus('Uploading...');
+
+            // Show upload overlay on sidebar
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.createElement('div');
+            overlay.className = 'upload-overlay';
+            overlay.innerHTML = '<div class="upload-overlay-content"><span class="spinner"></span> Uploading...</div>';
+            sidebar.style.position = 'relative';
+            sidebar.appendChild(overlay);
+
             for (const file of input.files) {
                 try {
                     await api.uploadFile(targetDir, file);
@@ -194,8 +256,9 @@ document.addEventListener('DOMContentLoaded', async () => {
                     window.showToast(`Upload failed: ${err.message}`, 'error');
                 }
             }
+
+            overlay.remove();
             await tree.refresh();
-            setStatus('Ready');
         });
         input.click();
     });
@@ -215,11 +278,65 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
-    // Global Ctrl+S / Cmd+S handler (in case focus is outside CodeMirror)
+    // Keyboard shortcuts
     document.addEventListener('keydown', (e) => {
-        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        const isMod = e.ctrlKey || e.metaKey;
+
+        // Ctrl/Cmd+S: Save current file
+        if (isMod && e.key === 's') {
             e.preventDefault();
             editor.save();
+            return;
+        }
+
+        // Ctrl/Cmd+P: Focus search input
+        if (isMod && e.key === 'p') {
+            e.preventDefault();
+            toolbar.focusSearch();
+            return;
+        }
+
+        // Ctrl/Cmd+Shift+E: Focus file tree
+        if (isMod && e.shiftKey && e.key === 'E') {
+            e.preventDefault();
+            treeContainer.focus();
+            return;
+        }
+
+        // Escape: Close search results / context menu / modal
+        if (e.key === 'Escape') {
+            tree._dismissContextMenu();
+            return;
+        }
+
+        // Delete/Backspace when tree is focused: delete selected node
+        if ((e.key === 'Delete' || e.key === 'Backspace') && document.activeElement === treeContainer) {
+            if (tree.selectedPath && !readonly) {
+                e.preventDefault();
+                treeContainer.dispatchEvent(new CustomEvent('file-delete-request', {
+                    bubbles: true,
+                    detail: { path: tree.selectedPath },
+                }));
+            }
+            return;
+        }
+
+        // F2 when tree is focused: rename selected file (via mv exec)
+        if (e.key === 'F2' && document.activeElement === treeContainer) {
+            if (tree.selectedPath && !readonly) {
+                e.preventDefault();
+                const oldPath = tree.selectedPath;
+                const oldName = oldPath.split('/').pop();
+                const newName = prompt('Rename to:', oldName);
+                if (newName && newName !== oldName) {
+                    const parentDir = oldPath.substring(0, oldPath.lastIndexOf('/')) || '/';
+                    const newPath = parentDir + (parentDir.endsWith('/') ? '' : '/') + newName;
+                    // Create new file with content, delete old — or use API
+                    // For now, show toast that rename is experimental
+                    window.showToast('Rename is not yet supported', 'info');
+                }
+            }
+            return;
         }
     });
 
@@ -249,6 +366,57 @@ document.addEventListener('DOMContentLoaded', async () => {
             handle.classList.remove('active');
             document.body.style.cursor = '';
             document.body.style.userSelect = '';
+        });
+    }
+
+    // Connection health monitoring — poll every 5 seconds
+    let connectionLost = false;
+    let retryInterval = null;
+
+    async function checkConnection() {
+        try {
+            const info = await api.getContainer();
+            // Connection restored
+            if (connectionLost) {
+                connectionLost = false;
+                connectionOverlay.style.display = 'none';
+                setConnectionStatus(true);
+                window.showToast('Connection restored', 'success');
+                if (retryInterval) {
+                    clearInterval(retryInterval);
+                    retryInterval = null;
+                }
+            }
+
+            // Check container status
+            if (info.status !== 'running') {
+                containerStoppedBanner.style.display = '';
+                setContainerStatus(info);
+            } else {
+                containerStoppedBanner.style.display = 'none';
+                setContainerStatus(info);
+            }
+            containerInfo = info;
+        } catch {
+            if (!connectionLost) {
+                connectionLost = true;
+                setConnectionStatus(false);
+                connectionOverlay.style.display = '';
+            }
+        }
+    }
+
+    // Start health check loop
+    setInterval(checkConnection, 5000);
+
+    // Reconnect button
+    if (btnReconnect) {
+        btnReconnect.addEventListener('click', async () => {
+            containerStoppedBanner.style.display = 'none';
+            await checkConnection();
+            if (containerInfo && containerInfo.status === 'running') {
+                await tree.refresh();
+            }
         });
     }
 });

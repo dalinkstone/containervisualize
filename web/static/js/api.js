@@ -81,4 +81,10 @@ const api = {
         a.click();
         a.remove();
     },
+
+    async search(query, path) {
+        const params = new URLSearchParams({ q: query, path: path || '/' });
+        const resp = await this._fetch(`/api/search?${params}`);
+        return resp.json();
+    },
 };

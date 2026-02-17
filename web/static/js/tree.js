@@ -375,7 +375,7 @@ class FileTree {
 
             // Load children if empty
             if (children.children.length === 0) {
-                children.innerHTML = '<div class="tree-loading">Loading...</div>';
+                children.innerHTML = '<div class="tree-loading"><span class="spinner"></span> Loading...</div>';
                 try {
                     const nodes = await api.getTree(path);
                     children.innerHTML = '';
@@ -390,6 +390,29 @@ class FileTree {
                     children.innerHTML = `<div class="tree-loading">Error: ${err.message}</div>`;
                 }
             }
+        }
+    }
+
+    // Navigate to a file path: expand parent directories and select the file
+    async navigateToFile(filePath) {
+        // Build list of parent directories to expand
+        const parts = filePath.split('/').filter(Boolean);
+        let currentPath = '';
+
+        // Expand each parent directory
+        for (let i = 0; i < parts.length - 1; i++) {
+            currentPath += '/' + parts[i];
+            const dirItem = this.container.querySelector(`.tree-item[data-path="${CSS.escape(currentPath)}"]`);
+            if (dirItem && !this.expandedDirs.has(currentPath)) {
+                await this._toggleDir(dirItem, currentPath);
+            }
+        }
+
+        // Select the file
+        const fileItem = this.container.querySelector(`.tree-item[data-path="${CSS.escape(filePath)}"]`);
+        if (fileItem) {
+            this._selectFile(fileItem, filePath);
+            fileItem.scrollIntoView({ block: 'nearest' });
         }
     }
 

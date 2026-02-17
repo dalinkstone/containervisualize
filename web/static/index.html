@@ -15,11 +15,16 @@
     <header id="header">
         <div class="header-left">
             <span class="app-name">Container Visualize</span>
+            <div class="search-container">
+                <input type="text" id="search-input" class="search-input" placeholder="Search files... (Ctrl+P)" autocomplete="off" spellcheck="false">
+                <div id="search-results" class="search-results"></div>
+            </div>
         </div>
         <div class="header-right">
             <span id="container-badge" class="container-badge"></span>
             <button id="btn-upload" class="header-btn" title="Upload file">&#x21e7;</button>
             <button id="btn-download" class="header-btn" title="Download">&#x21e9;</button>
+            <button id="btn-theme" class="header-btn" title="Toggle theme">&#x263E;</button>
             <button id="btn-refresh" class="header-btn" title="Refresh tree">&#x21bb;</button>
         </div>
     </header>
@@ -29,7 +34,7 @@
             <div class="sidebar-header">
                 <span class="sidebar-title">Files</span>
             </div>
-            <div id="file-tree" class="file-tree"></div>
+            <div id="file-tree" class="file-tree" tabindex="0"></div>
         </aside>
         <div id="resize-handle" class="resize-handle"></div>
         <section id="content">
@@ -42,8 +47,34 @@
     </main>
 
     <footer id="status-bar">
-        <span id="status-text">Ready</span>
+        <div class="status-left">
+            <span id="status-connection" class="status-connection">
+                <span class="status-dot connected"></span>
+                <span id="status-connection-text">Connected</span>
+            </span>
+        </div>
+        <div class="status-center">
+            <span id="status-file-info"></span>
+        </div>
+        <div class="status-right">
+            <span id="status-container"></span>
+        </div>
     </footer>
+
+    <!-- Connection lost overlay -->
+    <div id="connection-overlay" class="connection-overlay" style="display:none">
+        <div class="connection-overlay-content">
+            <div class="connection-spinner"></div>
+            <p class="connection-title">Connection to Docker lost</p>
+            <p class="connection-subtitle">Retrying...</p>
+        </div>
+    </div>
+
+    <!-- Container stopped banner -->
+    <div id="container-stopped-banner" class="container-stopped-banner" style="display:none">
+        <span>Container has stopped.</span>
+        <button id="btn-reconnect" class="banner-btn">Reconnect</button>
+    </div>
 
     <!-- App scripts (order matters) -->
     <script src="js/api.js"></script>

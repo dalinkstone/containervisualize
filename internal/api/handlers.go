@@ -248,5 +248,33 @@ func (h *Handlers) handleGetArchive(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
-	WriteError(w, http.StatusNotImplemented, "not implemented", "")
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		WriteError(w, http.StatusBadRequest, "q parameter is required", "")
+		return
+	}
+
+	rootPath := r.URL.Query().Get("path")
+	if rootPath == "" {
+		rootPath = "/"
+	}
+
+	searchContent := false
+	if strings.HasPrefix(query, "content:") {
+		searchContent = true
+		query = strings.TrimPrefix(query, "content:")
+	}
+
+	if query == "" {
+		WriteError(w, http.StatusBadRequest, "search query is empty", "")
+		return
+	}
+
+	nodes, err := h.Docker.SearchFiles(r.Context(), h.ContainerID, rootPath, query, searchContent)
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error(), rootPath)
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, nodes)
 }

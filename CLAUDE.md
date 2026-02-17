@@ -22,7 +22,7 @@ Container Visualize is a single-binary Go tool that connects to a running Docker
 ```
 cmd/containervisualize/main.go     → Entry point, CLI flags, server startup
 internal/docker/client.go          → Docker SDK client wrapper
-internal/docker/filesystem.go      → File operations (list, read, write, delete, archive)
+internal/docker/filesystem.go      → File operations (list, read, write, delete, archive, search)
 internal/docker/container.go       → Container metadata queries
 internal/api/router.go             → HTTP route registration
 internal/api/handlers.go           → Request handlers
@@ -35,7 +35,8 @@ web/static/css/style.css           → All styles (dark/light theme via CSS cust
 web/static/js/api.js               → Fetch wrapper for backend API
 web/static/js/tree.js              → File tree component
 web/static/js/editor.js            → CodeMirror wrapper and file viewer
-web/static/js/toolbar.js           → Upload, download, search controls
+web/static/js/toolbar.js           → Upload, download, search, theme toggle controls
+web/static/js/codemirror-loader.js → Dynamic CDN loader for CodeMirror 5
 web/static/js/app.js               → App init and state management
 ```
 
@@ -101,7 +102,7 @@ PUT    /api/file?path=...          → Update file (body = new content)
 POST   /api/file?path=...          → Upload file (multipart form)
 DELETE /api/file?path=...          → Delete file or directory
 GET    /api/archive?path=...       → Download directory as .tar.gz
-GET    /api/search?q=...&path=/    → Search filenames
+GET    /api/search?q=...&path=/    → Search filenames (prefix q with "content:" for content search)
 GET    /                           → Serve embedded web UI
 ```
 
@@ -206,7 +207,63 @@ Implemented:
 - `web/static/css/style.css`: Added styles for context menu (fixed position, dark surface, rounded corners, hover highlight, danger items, dividers), confirmation dialog (modal overlay, centered dialog, action buttons), drag-and-drop (dashed outline on tree, highlight on drop target).
 - `web/static/index.html`: Added upload (↟) and download (↡) buttons to header-right.
 
-**Next: Phase 4** — Search, theme toggle, keyboard shortcuts, polish
+**Phase 4: Search, theme toggle, keyboard shortcuts, polish — COMPLETE**
+
+Implemented:
+- `internal/docker/filesystem.go`:
+  - Added `SearchFiles(ctx, containerID, rootPath, query, searchContent)` — searches filenames via `find -maxdepth 10 -name "*query*" -type f` or file contents via `grep -rl --include=* -- query path`. Uses `context.WithTimeout` for 10-second limit. Returns up to 100 results. Query sanitized via `sanitizeSearchQuery` (allows only alphanumeric, `.`, `-`, `_`, space, `/`).
+  - Added `sanitizeSearchQuery(query)` — strips shell-special characters for safe exec args.
+  - Added `demuxExecOutput(raw)` — extracts stdout from Docker's multiplexed exec stream. Refactored from inline code in `parseLsOutput` to shared helper.
+- `internal/api/handlers.go`:
+  - `handleSearch`: Parses `q` (required) and `path` (default `/`) query params. If `q` starts with `content:`, searches file contents; otherwise searches filenames. Calls `SearchFiles`, returns JSON array of `{name, path, type}`.
+- `web/static/index.html`:
+  - Added search input field in header-left with placeholder "Search files... (Ctrl+P)"
+  - Added search results dropdown container below search input
+  - Added theme toggle button (☾/☀) in header-right
+  - Updated status bar with three sections: left (connection status with green/red dot), center (file info — path, size, line count, encoding), right (container name + status)
+  - Added connection lost overlay (full-screen, spinner, "Connection to Docker lost. Retrying...")
+  - Added container stopped banner (red bar at top with "Container has stopped" + Reconnect button)
+  - Added `tabindex="0"` on file-tree for keyboard focus
+- `web/static/css/style.css`:
+  - Search styles: `.search-container` (relative positioned, max-width 360px), `.search-input` (mono font, surface bg, accent border on focus), `.search-results` (dropdown with shadow, max-height 360px, scrollable), `.search-result-item` (name + path, hover/highlighted states), `.search-match` (highlight span with accent background), `.search-result-hint` (centered message for empty/error states)
+  - Status bar: Three-column flex layout with `.status-left`, `.status-center`, `.status-right`. Connection indicator with `.status-dot.connected` (green) and `.status-dot.disconnected` (red)
+  - Loading states: `.spinner` (12px spinning circle with accent top border), `.editor-loading` (centered spinner + text), `.upload-overlay` (semi-transparent overlay on sidebar during upload)
+  - Connection overlay: `.connection-overlay` (fixed full-screen dark backdrop), `.connection-spinner` (40px spinning circle), title and subtitle text
+  - Container stopped banner: `.container-stopped-banner` (fixed red bar at top), `.banner-btn` (semi-transparent button)
+  - Tree focus: `.file-tree:focus-visible` (accent outline)
+  - Light theme toast colors adjusted for readability
+  - Responsive: search container shrinks on narrow screens, status center hidden on mobile
+- `web/static/js/api.js`:
+  - Added `search(query, path)` — calls `GET /api/search?q=<query>&path=<path>`, returns JSON array
+- `web/static/js/toolbar.js`: Full rewrite.
+  - Theme toggle: Reads/writes `cv-theme` from `localStorage`. Toggles `data-theme` attribute on `<html>`. Dispatches `theme-change` CustomEvent for CodeMirror theme sync. Updates button icon (☾ for dark, ☀ for light).
+  - Search: 300ms debounce on input. Backend search triggered for queries >= 3 chars. Results rendered in dropdown with name + path, match highlighting. Arrow keys + Enter for keyboard navigation. Escape to dismiss. Click outside to dismiss. `onSearchSelect(callback)` for result selection.
+- `web/static/js/tree.js`:
+  - Added spinner (`.spinner` CSS class) to tree loading indicator during directory expand
+  - Added `navigateToFile(filePath)` — expands parent directories one by one, then selects and scrolls to the target file. Used by search result selection.
+- `web/static/js/editor.js`:
+  - Added `showLoading(path)` — shows breadcrumb + centered spinner while file loads
+  - Added `getFileInfo()` — returns `{path, size, lines}` for status bar display
+  - Tracks `_fileSize` and `_lineCount` from `openFile()`
+  - `openFile` now accepts optional `size` parameter
+  - CodeMirror theme switches between `material-darker` (dark) and `default` (light) based on current `data-theme`
+  - Listens for `theme-change` event to update CodeMirror theme dynamically
+- `web/static/js/app.js`: Major rewrite.
+  - Status bar: `setConnectionStatus(bool)` updates green/red dot + text. `setFileInfo(info)` shows path · size · lines · UTF-8. `setContainerStatus(info)` shows container name + colored status dot.
+  - Keyboard shortcuts:
+    - `Ctrl/Cmd+S`: Save current file
+    - `Ctrl/Cmd+P`: Focus search input
+    - `Ctrl/Cmd+Shift+E`: Focus file tree
+    - `Escape`: Dismiss context menu
+    - `Delete/Backspace` (tree focused): Delete selected node with confirmation
+    - `F2` (tree focused): Rename placeholder (shows "not yet supported" toast)
+  - Connection health monitoring: Polls `GET /api/container` every 5 seconds. On failure, shows connection overlay with spinner. On recovery, hides overlay, shows "Connection restored" toast. Detects container stopped state, shows red banner with Reconnect button.
+  - Upload progress: Shows spinner overlay on sidebar during upload
+  - File loading: Shows spinner in editor while file content loads via `editor.showLoading()`
+  - Search integration: `toolbar.onSearchSelect()` calls `tree.navigateToFile()` to expand parents and select the file
+  - API errors shown as toast notifications
+
+**Next: Phase 5** — Tests, Makefile, CI/CD, Dockerfile, release
 
 ### Manual Testing
 
@@ -221,13 +278,14 @@ make build
 
 # 3. Open http://localhost:8080 in a browser
 #    - You should see the Container Visualize UI with a dark theme
-#    - The header shows "Container Visualize" and a container badge (name, image, green dot if running)
+#    - The header shows "Container Visualize", a search input, and a container badge (name, image, green dot if running)
 #    - The left sidebar shows the file tree starting at /
-#    - Click a directory to expand it (lazy-loads children from the API)
-#    - Click a file to view its contents in the CodeMirror editor (right pane)
+#    - Click a directory to expand it (lazy-loads children from the API, shows spinner while loading)
+#    - Click a file to view its contents in the CodeMirror editor (right pane, shows spinner while loading)
 #    - Editor has syntax highlighting (material-darker theme), line numbers, bracket matching, code folding
 #    - Click the refresh button (↻) in the header to reload the tree
 #    - The sidebar is resizable by dragging the border between sidebar and content
+#    - The status bar shows: connection status (left), file info (center), container name (right)
 
 # 4. Test the editor and file saving:
 #    - Open a text file (e.g., /etc/hostname)
@@ -236,26 +294,51 @@ make build
 #    - Click "Save" button or press Ctrl+S / Cmd+S
 #    - A green toast notification "File saved" appears in the bottom-right
 #    - Close and reopen the file to confirm the change persisted
+#    - Status bar center shows: file path · size · line count · UTF-8
 
 # 5. Test markdown preview:
 #    - Open a .md file (or create one via the API)
 #    - Click the "Preview" button to see rendered markdown
 #    - Click "Edit" to go back to the CodeMirror editor
 
-# 6. Test the API endpoints directly:
+# 6. Test search functionality:
+#    - Press Ctrl+P / Cmd+P to focus the search input
+#    - Type a filename (e.g., "hostname") — results appear in dropdown after 300ms
+#    - Use arrow keys to navigate, Enter to select
+#    - Clicking a result expands parent directories and opens the file
+#    - Press Escape to dismiss search results
+#    - Prefix with "content:" to search file contents (e.g., "content:root")
+curl "http://localhost:8080/api/search?q=hostname&path=/"    # Search by filename
+curl "http://localhost:8080/api/search?q=content:root&path=/"  # Search file contents
+
+# 7. Test theme toggle:
+#    - Click the theme toggle button (☾) in the header
+#    - UI switches to light theme (Catppuccin Latte colors)
+#    - CodeMirror editor switches to default (light) theme
+#    - Click again to switch back to dark theme
+#    - Preference persists across page reloads (stored in localStorage)
+
+# 8. Test keyboard shortcuts:
+#    - Ctrl/Cmd+S: Save current file
+#    - Ctrl/Cmd+P: Focus search input
+#    - Ctrl/Cmd+Shift+E: Focus file tree
+#    - Escape: Close search dropdown / context menu
+#    - Delete/Backspace (when tree panel focused): Delete selected item (with confirmation)
+
+# 9. Test the API endpoints directly:
 curl http://localhost:8080/api/container          # Container metadata JSON
 curl http://localhost:8080/api/tree?path=/         # Directory listing JSON array
 curl "http://localhost:8080/api/file?path=/etc/hostname"  # File contents with detected Content-Type
 curl -X PUT "http://localhost:8080/api/file?path=/tmp/test.txt" -d "hello world"  # Save file
 
-# 7. Test file upload (browser):
+# 10. Test file upload (browser):
 #    - Click the upload button (↟) in the header
 #    - Select a file from your computer
-#    - The file uploads to the currently selected directory (or / if nothing selected)
+#    - A spinner overlay appears on the sidebar during upload
 #    - A green toast notification "Uploaded <filename>" appears
 #    - The file tree refreshes and shows the new file
 
-# 8. Test context menu:
+# 11. Test context menu:
 #    - Right-click a file in the tree → see Download, Delete, Copy Path options
 #    - Right-click a directory → see New File, Upload File Here, Download as Archive, Delete, Copy Path
 #    - Click "Copy Path" → path is copied to clipboard, toast confirms
@@ -264,29 +347,29 @@ curl -X PUT "http://localhost:8080/api/file?path=/tmp/test.txt" -d "hello world"
 #    - Click "Download as Archive" on a directory → tar.gz downloads
 #    - Click "Delete" on a file → confirmation dialog appears → confirm → file is removed
 
-# 9. Test drag and drop:
+# 12. Test drag and drop:
 #    - Drag a file from your desktop onto the tree panel
 #    - The tree panel shows a dashed outline, directories highlight on hover
 #    - Drop the file → it uploads to the hovered directory
 #    - Toast confirms upload, tree refreshes
 
-# 10. Test delete confirmation:
+# 13. Test delete confirmation:
 #    - Right-click a file → Delete → confirmation dialog appears
 #    - Click Cancel → nothing happens
 #    - Click Delete → file is removed from tree, editor clears if that file was open
 
-# 11. Test archive download:
+# 14. Test archive download:
 curl "http://localhost:8080/api/archive?path=/etc" --output etc.tar.gz  # Downloads directory as tar.gz
 curl "http://localhost:8080/api/archive?path=/etc/hostname" --output hostname  # Downloads single file
 
-# 12. Test upload via API:
+# 15. Test upload via API:
 curl -X POST "http://localhost:8080/api/file?path=/tmp" -F "file=@/path/to/local/file"  # Upload file
 
-# 13. Test delete via API:
+# 16. Test delete via API:
 curl -X DELETE "http://localhost:8080/api/file?path=/tmp/test.txt"  # Delete file
 curl -X DELETE "http://localhost:8080/api/file?path=/"  # Should return 403 Forbidden
 
-# 14. Test readonly mode:
+# 17. Test readonly mode:
 ./bin/containervisualize -c test-nginx --no-open --readonly -v
 # Then:
 curl -X PUT http://localhost:8080/api/file?path=/tmp/test     # Should return 403 Forbidden
@@ -294,10 +377,18 @@ curl -X POST http://localhost:8080/api/file?path=/tmp -F "file=@test" # Should r
 curl -X DELETE http://localhost:8080/api/file?path=/tmp/test   # Should return 403 Forbidden
 # In the browser: upload/delete buttons show "read-only mode" toast, editor is read-only
 
-# 15. Test path validation:
+# 18. Test path validation:
 curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad Request
 
-# 16. Stop the server with Ctrl+C (graceful shutdown)
+# 19. Test connection error handling:
+#    - With the UI open, stop the Docker container: docker stop test-nginx
+#    - A red "Container has stopped" banner appears at the top with a "Reconnect" button
+#    - The status bar shows a red dot + "Disconnected"
+#    - Restart the container: docker start test-nginx
+#    - Click "Reconnect" or wait — the banner disappears, a toast shows "Connection restored"
+#    - Stop the Docker daemon entirely to see the full-screen "Connection to Docker lost" overlay
+
+# 20. Stop the server with Ctrl+C (graceful shutdown)
 ```
 
 ## Things to Avoid
@@ -308,5 +399,5 @@ curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad
 - Don't use `docker exec` via `os/exec`. Use the Docker SDK's `ContainerExecCreate` and `ExecAttach`.
 - Don't buffer entire files in memory for read/write operations. Stream everything.
 - Don't add WebSocket support in v1. Manual refresh is fine for now.
-- Don't create separate CSS/JS files per component beyond the existing 5 JS files and 1 CSS file.
+- Don't create separate CSS/JS files per component beyond the existing 6 JS files and 1 CSS file.
 - Don't add authentication in v1. Localhost binding is the security model.
