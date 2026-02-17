@@ -170,7 +170,18 @@ Implemented:
 - handleGetFile: detects content type via http.DetectContentType on first 512 bytes, uses io.MultiReader to re-prepend buffer, streams via StreamContent with Content-Disposition header
 - main.go wires DockerClient → NewRouter → http.Server with graceful shutdown
 
-**Next: Phase 1.3** — Basic file tree UI (frontend)
+**Phase 1.3: Basic file tree UI (frontend) — COMPLETE**
+
+Implemented:
+- `web/static/index.html`: SPA shell with header (app name + container badge + refresh button), main area (resizable sidebar + content pane), status bar. Loads CodeMirror 5 from CDN (codemirror.min.js + language modes: javascript, xml, htmlmixed, css, markdown, python, go, yaml, shell, dockerfile). Loads app CSS and JS files in order.
+- `web/static/css/style.css`: Catppuccin Mocha dark theme via CSS custom properties (--bg-primary, --bg-secondary, --bg-surface, --text-primary, --text-secondary, --accent, --border, etc.). Light theme support via `[data-theme="light"]`. Layout: fixed header, flex main with sidebar + content, fixed status bar. Tree styles with indentation, hover/selected states, expand/collapse arrows. Editor area with breadcrumb, pre/code display, image preview, binary notice. Custom scrollbars (webkit + Firefox). Responsive: sidebar becomes slide-out panel on narrow screens (<768px). Resizable sidebar via drag handle.
+- `web/static/js/api.js`: API module with methods: getContainer(), getTree(path), getFile(path), updateFile(path, content), uploadFile(dirPath, file), deleteFile(path). All return promises. Non-2xx throws with error message from JSON body. getFile returns text for text-like content types, blob otherwise.
+- `web/static/js/tree.js`: FileTree class with event delegation on container. loadRoot() fetches /api/tree?path=/ and renders entries. renderNode creates tree items with arrow (directories), icon (folder/file/link), name, size, symlink target. Directories expand/collapse on click (lazy-loads children). Tracks expanded state — re-click collapses without refetch. Highlights selected file. refresh() reloads tree preserving expanded state. Uses CustomEvent 'file-select' for file selection.
+- `web/static/js/editor.js`: EditorPanel class. openFile(path, content, contentType) shows: text in pre/code block, images via object URL, binary with size and download link. Breadcrumb shows file path. clear() resets to empty state.
+- `web/static/js/toolbar.js`: Toolbar class. setContainerInfo(info) updates badge with name, image, running status indicator. onRefresh(callback) binds refresh button.
+- `web/static/js/app.js`: On DOMContentLoaded: creates FileTree, EditorPanel, Toolbar instances. Fetches container info, loads root tree, wires file-select event to editor, wires refresh button to tree.refresh(). Implements sidebar resize via drag handle with min/max width constraints.
+
+**Next: Phase 2** — CodeMirror editor integration, syntax highlighting, file save
 
 ### Manual Testing
 
@@ -180,27 +191,33 @@ Prerequisites: Docker running, at least one container running (e.g., `docker run
 # 1. Build the binary
 make build
 
-# 2. Run against a container (use --no-open to skip browser)
+# 2. Run against a container
 ./bin/containervisualize -c test-nginx --no-open -v
 
-# 3. In another terminal, test the API endpoints:
-curl http://localhost:8080/api/container          # Should return container metadata JSON
-curl http://localhost:8080/api/tree?path=/         # Should return directory listing as JSON array
-curl "http://localhost:8080/api/file?path=/etc/hostname"  # Should return file contents with detected Content-Type
-curl http://localhost:8080/api/archive?path=/tmp   # Should return 501 (not implemented yet)
-curl "http://localhost:8080/api/search?q=conf&path=/"     # Should return 501 (not implemented yet)
-curl http://localhost:8080/                         # Should return "Container Visualize - API is working" HTML
+# 3. Open http://localhost:8080 in a browser
+#    - You should see the Container Visualize UI with a dark theme
+#    - The header shows "Container Visualize" and a container badge (name, image, green dot if running)
+#    - The left sidebar shows the file tree starting at /
+#    - Click a directory to expand it (lazy-loads children from the API)
+#    - Click a file to view its text content in the right pane
+#    - Click the refresh button (↻) in the header to reload the tree
+#    - The sidebar is resizable by dragging the border between sidebar and content
 
-# 4. Test readonly mode:
+# 4. Test the API endpoints directly:
+curl http://localhost:8080/api/container          # Container metadata JSON
+curl http://localhost:8080/api/tree?path=/         # Directory listing JSON array
+curl "http://localhost:8080/api/file?path=/etc/hostname"  # File contents with detected Content-Type
+
+# 5. Test readonly mode:
 ./bin/containervisualize -c test-nginx --no-open --readonly -v
-# Then in another terminal:
-curl -X PUT http://localhost:8080/api/file?path=/tmp/test  # Should return 403 Forbidden
-curl -X DELETE http://localhost:8080/api/file?path=/tmp/test  # Should return 403 Forbidden
+# Then:
+curl -X PUT http://localhost:8080/api/file?path=/tmp/test     # Should return 403 Forbidden
+curl -X DELETE http://localhost:8080/api/file?path=/tmp/test   # Should return 403 Forbidden
 
-# 5. Test path validation:
+# 6. Test path validation:
 curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad Request
 
-# 6. Stop the server with Ctrl+C (should shut down gracefully)
+# 7. Stop the server with Ctrl+C (graceful shutdown)
 ```
 
 ## Things to Avoid
