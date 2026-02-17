@@ -288,6 +288,12 @@ main {
     flex: 1;
     overflow: auto;
     padding: 16px;
+    display: flex;
+    flex-direction: column;
+}
+
+.editor-content:has(.editor-toolbar) {
+    padding: 0;
 }
 
 .editor-content pre {
@@ -375,6 +381,180 @@ footer {
     scrollbar-width: thin;
     scrollbar-color: var(--bg-surface) transparent;
 }
+
+/* Editor toolbar (save button, md toggle) */
+.editor-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 12px;
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.editor-btn {
+    background: var(--bg-surface);
+    border: 1px solid var(--border);
+    color: var(--text-primary);
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+}
+
+.editor-btn:hover {
+    background: var(--accent);
+    color: var(--bg-primary);
+}
+
+.save-btn {
+    margin-left: auto;
+}
+
+/* Dirty indicator (unsaved dot) */
+.dirty-indicator {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent);
+    display: inline-block;
+    margin-left: 8px;
+    vertical-align: middle;
+}
+
+/* CodeMirror container */
+.editor-wrapper {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+.editor-wrapper .CodeMirror {
+    height: 100%;
+    font-family: var(--font-mono);
+    font-size: 13px;
+}
+
+/* Fallback textarea (when CodeMirror CDN fails) */
+.editor-fallback {
+    width: 100%;
+    height: 100%;
+    background: var(--bg-primary);
+    color: var(--text-primary);
+    border: none;
+    padding: 16px;
+    font-family: var(--font-mono);
+    font-size: 13px;
+    line-height: 1.6;
+    resize: none;
+    outline: none;
+    tab-size: 2;
+}
+
+/* Markdown preview */
+.md-preview {
+    padding: 20px 24px;
+    color: var(--text-primary);
+    line-height: 1.7;
+    overflow-y: auto;
+    height: 100%;
+}
+
+.md-preview h1, .md-preview h2, .md-preview h3,
+.md-preview h4, .md-preview h5, .md-preview h6 {
+    margin: 1em 0 0.5em;
+    color: var(--accent);
+}
+
+.md-preview h1 { font-size: 1.8em; }
+.md-preview h2 { font-size: 1.5em; border-bottom: 1px solid var(--border); padding-bottom: 0.3em; }
+.md-preview h3 { font-size: 1.25em; }
+
+.md-preview p { margin: 0.5em 0; }
+
+.md-preview code {
+    background: var(--bg-surface);
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: var(--font-mono);
+    font-size: 0.9em;
+}
+
+.md-preview pre {
+    background: var(--bg-surface);
+    padding: 12px 16px;
+    border-radius: 6px;
+    overflow-x: auto;
+    margin: 1em 0;
+}
+
+.md-preview pre code {
+    background: none;
+    padding: 0;
+}
+
+.md-preview a {
+    color: var(--accent);
+    text-decoration: none;
+}
+
+.md-preview a:hover {
+    text-decoration: underline;
+}
+
+.md-preview ul, .md-preview ol {
+    margin: 0.5em 0;
+    padding-left: 1.5em;
+}
+
+.md-preview li {
+    margin: 0.25em 0;
+}
+
+.md-preview hr {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 1.5em 0;
+}
+
+.md-preview strong { font-weight: 600; }
+.md-preview em { font-style: italic; }
+
+/* Toast notifications */
+#toast-container {
+    position: fixed;
+    bottom: 40px;
+    right: 16px;
+    z-index: 1000;
+    display: flex;
+    flex-direction: column-reverse;
+    gap: 8px;
+    pointer-events: none;
+}
+
+.toast {
+    padding: 10px 18px;
+    border-radius: 6px;
+    font-size: 13px;
+    color: #fff;
+    opacity: 0;
+    transform: translateX(20px);
+    transition: opacity 0.25s, transform 0.25s;
+    pointer-events: auto;
+    max-width: 360px;
+    word-wrap: break-word;
+}
+
+.toast.show {
+    opacity: 1;
+    transform: translateX(0);
+}
+
+.toast-success { background: var(--success); color: #1e1e2e; }
+.toast-error { background: var(--danger); color: #1e1e2e; }
+.toast-info { background: var(--accent); color: #1e1e2e; }
 
 /* Responsive: narrow screens */
 @media (max-width: 768px) {

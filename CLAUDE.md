@@ -158,7 +158,7 @@ Implemented:
   - GET /api/container → returns container metadata JSON
   - GET /api/tree → lists directory contents (path validated)
   - GET /api/file → reads file with content type detection (512-byte sniff + MultiReader re-prepend) and streaming via StreamContent
-  - PUT /api/file → 501 placeholder
+  - PUT /api/file → updates file content (reads body, writes via WriteFile tar+CopyToContainer)
   - POST /api/file → 501 placeholder
   - DELETE /api/file → 501 placeholder
   - GET /api/archive → 501 placeholder
@@ -181,7 +181,16 @@ Implemented:
 - `web/static/js/toolbar.js`: Toolbar class. setContainerInfo(info) updates badge with name, image, running status indicator. onRefresh(callback) binds refresh button.
 - `web/static/js/app.js`: On DOMContentLoaded: creates FileTree, EditorPanel, Toolbar instances. Fetches container info, loads root tree, wires file-select event to editor, wires refresh button to tree.refresh(). Implements sidebar resize via drag handle with min/max width constraints.
 
-**Next: Phase 2** — CodeMirror editor integration, syntax highlighting, file save
+**Phase 2: CodeMirror editor integration, syntax highlighting, file save — COMPLETE**
+
+Implemented:
+- `web/static/index.html`: Added CodeMirror 5 CDN resources — material-darker theme CSS, foldgutter CSS, dialog CSS. Added language modes: clike, toml, sql, ruby, php, rust (in addition to existing modes). Added addons: active-line, matchbrackets, closebrackets, foldcode, foldgutter, brace-fold, comment-fold, search, searchcursor, dialog, jump-to-line.
+- `web/static/js/editor.js`: Full rewrite. EditorPanel now creates CodeMirror instances for text files with: material-darker theme, line numbers, bracket matching, auto-close brackets, fold gutter, active line highlight, tabSize 2, readonly support. Mode detection from file extension (js/jsx/ts/tsx → javascript, py → python, go → go, html/htm → htmlmixed, css/scss → css, md → markdown, yml/yaml → yaml, sh/bash/zsh → shell, json → javascript+json, xml, sql, rb → ruby, php, rs → rust, c/h → text/x-csrc, java → text/x-java, Dockerfile → dockerfile, toml). Save button + Ctrl+S/Cmd+S keyboard shortcut. Dirty state tracking with dot indicator. Unsaved changes prompt before switching files. Markdown preview toggle (simple regex-based renderer for headers, bold, italic, code blocks, lists, links, paragraphs, horizontal rules). Fallback to textarea if CodeMirror CDN unreachable.
+- `internal/api/handlers.go`: handleUpdateFile reads request body, calls docker.WriteFile to persist content. Returns JSON {status: "ok"} on success.
+- `web/static/js/app.js`: Toast notification system (window.showToast) with success/error/info types, auto-dismiss 3s, slide-in animation. Global Ctrl+S/Cmd+S handler. EditorPanel now receives readonly flag from container info.
+- `web/static/css/style.css`: Added styles for: editor toolbar (save button, md toggle), dirty indicator dot, CodeMirror container (full height), fallback textarea, markdown preview (headers, code, links, lists, hr), toast notifications (positioned bottom-right, colored by type, animated).
+
+**Next: Phase 3** — Upload, delete, download + context menus
 
 ### Manual Testing
 
@@ -199,25 +208,41 @@ make build
 #    - The header shows "Container Visualize" and a container badge (name, image, green dot if running)
 #    - The left sidebar shows the file tree starting at /
 #    - Click a directory to expand it (lazy-loads children from the API)
-#    - Click a file to view its text content in the right pane
+#    - Click a file to view its contents in the CodeMirror editor (right pane)
+#    - Editor has syntax highlighting (material-darker theme), line numbers, bracket matching, code folding
 #    - Click the refresh button (↻) in the header to reload the tree
 #    - The sidebar is resizable by dragging the border between sidebar and content
 
-# 4. Test the API endpoints directly:
+# 4. Test the editor and file saving:
+#    - Open a text file (e.g., /etc/hostname)
+#    - Edit the content in the CodeMirror editor
+#    - A blue dot appears next to the filename indicating unsaved changes
+#    - Click "Save" button or press Ctrl+S / Cmd+S
+#    - A green toast notification "File saved" appears in the bottom-right
+#    - Close and reopen the file to confirm the change persisted
+
+# 5. Test markdown preview:
+#    - Open a .md file (or create one via the API)
+#    - Click the "Preview" button to see rendered markdown
+#    - Click "Edit" to go back to the CodeMirror editor
+
+# 6. Test the API endpoints directly:
 curl http://localhost:8080/api/container          # Container metadata JSON
 curl http://localhost:8080/api/tree?path=/         # Directory listing JSON array
 curl "http://localhost:8080/api/file?path=/etc/hostname"  # File contents with detected Content-Type
+curl -X PUT "http://localhost:8080/api/file?path=/tmp/test.txt" -d "hello world"  # Save file
 
-# 5. Test readonly mode:
+# 7. Test readonly mode:
 ./bin/containervisualize -c test-nginx --no-open --readonly -v
 # Then:
 curl -X PUT http://localhost:8080/api/file?path=/tmp/test     # Should return 403 Forbidden
 curl -X DELETE http://localhost:8080/api/file?path=/tmp/test   # Should return 403 Forbidden
+# In the browser, the editor should be read-only (no Save button, no editing)
 
-# 6. Test path validation:
+# 8. Test path validation:
 curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad Request
 
-# 7. Stop the server with Ctrl+C (graceful shutdown)
+# 9. Stop the server with Ctrl+C (graceful shutdown)
 ```
 
 ## Things to Avoid

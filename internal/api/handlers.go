@@ -69,7 +69,28 @@ func (h *Handlers) handleGetFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
-	WriteError(w, http.StatusNotImplemented, "not implemented", "")
+	path := r.URL.Query().Get("path")
+	if path == "" {
+		WriteError(w, http.StatusBadRequest, "path parameter is required", "")
+		return
+	}
+
+	defer r.Body.Close()
+
+	// Read the body into a buffer so we know the size for the tar header
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		WriteError(w, http.StatusBadRequest, "failed to read request body", path)
+		return
+	}
+
+	err = h.Docker.WriteFile(r.Context(), h.ContainerID, path, bytes.NewReader(body), int64(len(body)))
+	if err != nil {
+		WriteError(w, http.StatusInternalServerError, err.Error(), path)
+		return
+	}
+
+	WriteJSON(w, http.StatusOK, map[string]string{"status": "ok"})
 }
 
 func (h *Handlers) handleUploadFile(w http.ResponseWriter, r *http.Request) {

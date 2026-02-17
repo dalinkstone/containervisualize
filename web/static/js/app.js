@@ -1,13 +1,39 @@
 // Container Visualize — App init and state management
 
+// Toast notification system
+window.showToast = function(message, type) {
+    type = type || 'info';
+    let container = document.getElementById('toast-container');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'toast-container';
+        document.body.appendChild(container);
+    }
+
+    const toast = document.createElement('div');
+    toast.className = `toast toast-${type}`;
+    toast.textContent = message;
+    container.appendChild(toast);
+
+    // Trigger animation
+    requestAnimationFrame(() => toast.classList.add('show'));
+
+    setTimeout(() => {
+        toast.classList.remove('show');
+        toast.addEventListener('transitionend', () => toast.remove());
+    }, 3000);
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     const treeContainer = document.getElementById('file-tree');
     const editorContainer = document.getElementById('editor-panel');
     const headerEl = document.getElementById('header');
     const statusText = document.getElementById('status-text');
 
+    // Determine if we're in readonly mode from the container info
+    let readonly = false;
+
     const tree = new FileTree(treeContainer);
-    const editor = new EditorPanel(editorContainer);
     const toolbar = new Toolbar(headerEl);
 
     // Status helper
@@ -20,9 +46,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         const info = await api.getContainer();
         toolbar.setContainerInfo(info);
         document.title = `${info.name} — Container Visualize`;
+        if (info.readonly) readonly = true;
     } catch (err) {
         setStatus(`Error: ${err.message}`);
     }
+
+    const editor = new EditorPanel(editorContainer, readonly);
 
     // Load root tree
     setStatus('Loading file tree...');
@@ -43,7 +72,6 @@ document.addEventListener('DOMContentLoaded', async () => {
             setStatus(path);
         } catch (err) {
             setStatus(`Error: ${err.message}`);
-            editor.clear();
         }
     });
 
@@ -55,6 +83,14 @@ document.addEventListener('DOMContentLoaded', async () => {
             setStatus('Ready');
         } catch (err) {
             setStatus(`Error: ${err.message}`);
+        }
+    });
+
+    // Global Ctrl+S / Cmd+S handler (in case focus is outside CodeMirror)
+    document.addEventListener('keydown', (e) => {
+        if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+            e.preventDefault();
+            editor.save();
         }
     });
 
