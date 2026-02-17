@@ -133,6 +133,43 @@ The project is built in 5 phases (see PLAN.md for full prompts):
 
 Each phase produces a working tool. Don't skip ahead — complete and verify each phase before moving on.
 
+## Current Progress
+
+**Phase 1.1: Project initialization and Docker client — COMPLETE**
+
+Implemented:
+- CLI entry point with all flags (--container, --port, --host, --readonly, --depth, --docker-host, --no-open, --verbose)
+- Docker client wrapper (NewDockerClient, Ping, Close)
+- Container info (GetContainerInfo via ContainerInspect)
+- Filesystem operations: ValidatePath, ListDir (exec + tar fallback), StatPath, ReadFile, WriteFile
+- ls output parser with demux for Docker exec stream framing
+- API layer stubs: router, handlers (GET /api/container, /api/tree, /api/file working; PUT/POST/DELETE return 501), middleware (logging, readonly, path validation), JSON response helpers
+- Web embed with placeholder index.html
+- Makefile with build, dev, test, lint, fmt, clean, release targets
+- Graceful shutdown on SIGINT/SIGTERM
+
+**Next: Phase 1.2** — API layer wiring and full route registration
+**Then: Phase 1.3** — Basic file tree UI (frontend)
+
+### Manual Testing — Phase 1.1
+
+Prerequisites: Docker running, at least one container running (e.g., `docker run -d --name test-nginx nginx`).
+
+```bash
+# 1. Build the binary
+make build
+
+# 2. Run against a container (use --no-open to skip browser)
+./bin/containervisualize -c test-nginx --no-open -v
+
+# 3. In another terminal, test the API endpoints:
+curl http://localhost:8080/api/container     # Should return container JSON
+curl http://localhost:8080/api/tree?path=/   # Should return directory listing as JSON
+curl http://localhost:8080/                  # Should return placeholder HTML
+
+# 4. Stop the server with Ctrl+C (should shut down gracefully)
+```
+
 ## Things to Avoid
 
 - Don't add a `pkg/` or `util/` directory. If something needs to be shared, put it in `internal/model/`.
