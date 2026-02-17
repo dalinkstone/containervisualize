@@ -1,9 +1,10 @@
 package api
 
 import (
-	"fmt"
+	"bytes"
 	"io"
 	"net/http"
+	"path/filepath"
 
 	"github.com/dalinkstone/containervisualize/internal/docker"
 )
@@ -49,7 +50,6 @@ func (h *Handlers) handleGetFile(w http.ResponseWriter, r *http.Request) {
 		WriteError(w, http.StatusInternalServerError, err.Error(), path)
 		return
 	}
-	defer reader.Close()
 
 	// Read first 512 bytes for content type detection
 	buf := make([]byte, 512)
@@ -57,16 +57,15 @@ func (h *Handlers) handleGetFile(w http.ResponseWriter, r *http.Request) {
 	buf = buf[:n]
 
 	contentType := http.DetectContentType(buf)
+	filename := filepath.Base(path)
 
-	w.Header().Set("Content-Type", contentType)
-	if size > 0 {
-		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
-	}
-	w.WriteHeader(http.StatusOK)
+	// Re-combine the buffered bytes with the remaining stream
+	combined := io.NopCloser(io.MultiReader(
+		bytes.NewReader(buf),
+		reader,
+	))
 
-	// Write the buffered bytes first, then stream the rest
-	w.Write(buf)
-	io.Copy(w, reader)
+	StreamContent(w, combined, filename, contentType, size)
 }
 
 func (h *Handlers) handleUpdateFile(w http.ResponseWriter, r *http.Request) {
@@ -78,5 +77,13 @@ func (h *Handlers) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handlers) handleDeleteFile(w http.ResponseWriter, r *http.Request) {
+	WriteError(w, http.StatusNotImplemented, "not implemented", "")
+}
+
+func (h *Handlers) handleGetArchive(w http.ResponseWriter, r *http.Request) {
+	WriteError(w, http.StatusNotImplemented, "not implemented", "")
+}
+
+func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {
 	WriteError(w, http.StatusNotImplemented, "not implemented", "")
 }

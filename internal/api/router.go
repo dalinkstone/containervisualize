@@ -27,6 +27,8 @@ func NewRouter(dockerClient *docker.DockerClient, containerID string, readonly b
 	mux.Handle("PUT /api/file", apiWithPath(h.handleUpdateFile))
 	mux.Handle("POST /api/file", apiWithPath(h.handleUploadFile))
 	mux.Handle("DELETE /api/file", apiWithPath(h.handleDeleteFile))
+	mux.Handle("GET /api/archive", apiWithPath(h.handleGetArchive))
+	mux.Handle("GET /api/search", apiWithPath(h.handleSearch))
 
 	// Serve embedded static files
 	staticServer := http.FileServerFS(staticFS)

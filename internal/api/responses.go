@@ -2,6 +2,8 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 
 	"github.com/dalinkstone/containervisualize/internal/model"
@@ -21,4 +23,19 @@ func WriteError(w http.ResponseWriter, status int, message string, path string) 
 		Path:   path,
 		Status: status,
 	})
+}
+
+// StreamContent sets appropriate headers and copies the reader to the response.
+func StreamContent(w http.ResponseWriter, reader io.ReadCloser, filename string, contentType string, size int64) {
+	defer reader.Close()
+
+	w.Header().Set("Content-Type", contentType)
+	if filename != "" {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=%q", filename))
+	}
+	if size > 0 {
+		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
+	}
+	w.WriteHeader(http.StatusOK)
+	io.Copy(w, reader)
 }

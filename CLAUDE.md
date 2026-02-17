@@ -148,10 +148,31 @@ Implemented:
 - Makefile with build, dev, test, lint, fmt, clean, release targets
 - Graceful shutdown on SIGINT/SIGTERM
 
-**Next: Phase 1.2** — API layer wiring and full route registration
-**Then: Phase 1.3** — Basic file tree UI (frontend)
+**Phase 1.2: API layer wiring and full route registration — COMPLETE**
 
-### Manual Testing — Phase 1.1
+Implemented:
+- Response helpers: WriteJSON, WriteError, StreamContent (sets Content-Type, Content-Disposition, Content-Length headers and streams reader to response)
+- Middleware: LoggingMiddleware (logs method, path, status, duration), ReadOnlyMiddleware (rejects PUT/POST/DELETE on /api/* when readonly), PathValidationMiddleware (validates and cleans "path" query param via ValidatePath)
+- Router: NewRouter wiring DockerClient, containerID, readonly flag, and embedded FS. All routes registered with Go 1.22 ServeMux method+pattern matching
+- Full route registration:
+  - GET /api/container → returns container metadata JSON
+  - GET /api/tree → lists directory contents (path validated)
+  - GET /api/file → reads file with content type detection (512-byte sniff + MultiReader re-prepend) and streaming via StreamContent
+  - PUT /api/file → 501 placeholder
+  - POST /api/file → 501 placeholder
+  - DELETE /api/file → 501 placeholder
+  - GET /api/archive → 501 placeholder
+  - GET /api/search → 501 placeholder
+  - GET / → serves embedded static files
+- PathValidation middleware applied to /api/tree, /api/file, /api/archive, /api/search
+- ReadOnly middleware wraps all /api/* routes
+- Logging middleware wraps everything
+- handleGetFile: detects content type via http.DetectContentType on first 512 bytes, uses io.MultiReader to re-prepend buffer, streams via StreamContent with Content-Disposition header
+- main.go wires DockerClient → NewRouter → http.Server with graceful shutdown
+
+**Next: Phase 1.3** — Basic file tree UI (frontend)
+
+### Manual Testing
 
 Prerequisites: Docker running, at least one container running (e.g., `docker run -d --name test-nginx nginx`).
 
@@ -163,11 +184,23 @@ make build
 ./bin/containervisualize -c test-nginx --no-open -v
 
 # 3. In another terminal, test the API endpoints:
-curl http://localhost:8080/api/container     # Should return container JSON
-curl http://localhost:8080/api/tree?path=/   # Should return directory listing as JSON
-curl http://localhost:8080/                  # Should return placeholder HTML
+curl http://localhost:8080/api/container          # Should return container metadata JSON
+curl http://localhost:8080/api/tree?path=/         # Should return directory listing as JSON array
+curl "http://localhost:8080/api/file?path=/etc/hostname"  # Should return file contents with detected Content-Type
+curl http://localhost:8080/api/archive?path=/tmp   # Should return 501 (not implemented yet)
+curl "http://localhost:8080/api/search?q=conf&path=/"     # Should return 501 (not implemented yet)
+curl http://localhost:8080/                         # Should return "Container Visualize - API is working" HTML
 
-# 4. Stop the server with Ctrl+C (should shut down gracefully)
+# 4. Test readonly mode:
+./bin/containervisualize -c test-nginx --no-open --readonly -v
+# Then in another terminal:
+curl -X PUT http://localhost:8080/api/file?path=/tmp/test  # Should return 403 Forbidden
+curl -X DELETE http://localhost:8080/api/file?path=/tmp/test  # Should return 403 Forbidden
+
+# 5. Test path validation:
+curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad Request
+
+# 6. Stop the server with Ctrl+C (should shut down gracefully)
 ```
 
 ## Things to Avoid
