@@ -83,8 +83,10 @@ class Toolbar {
     _updateThemeIcon() {
         if (!this.themeBtn) return;
         const theme = document.documentElement.getAttribute('data-theme') || 'dark';
-        // Moon for dark, sun for light
-        this.themeBtn.textContent = theme === 'dark' ? '\u263E' : '\u2600';
+        const darkIcon = document.getElementById('theme-icon-dark');
+        const lightIcon = document.getElementById('theme-icon-light');
+        if (darkIcon) darkIcon.style.display = theme === 'dark' ? 'inline-block' : 'none';
+        if (lightIcon) lightIcon.style.display = theme === 'light' ? 'inline-block' : 'none';
         this.themeBtn.title = theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme';
     }
 

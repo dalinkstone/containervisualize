@@ -114,6 +114,10 @@ header {
     transition: background 0.15s, color 0.15s;
 }
 
+.header-btn svg {
+    flex-shrink: 0;
+}
+
 .header-btn:hover {
     background: var(--bg-surface);
     color: var(--text-primary);
