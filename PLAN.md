@@ -34,7 +34,7 @@ Create the project structure:
 - go.mod
 
 For main.go:
-- Use the `flag` package to parse CLI flags: --container/-c (required, string), --port/-p (default 8080, int), --host (default "127.0.0.1", string), --readonly (bool), --depth (default 3, int), --docker-host (default "", string — empty means use default), --no-open (bool), --verbose/-v (bool)
+- Use the `flag` package to parse CLI flags: --container/-c (required, string), --port/-p (default 9500, int), --host (default "127.0.0.1", string), --readonly (bool), --depth (default 3, int), --docker-host (default "", string — empty means use default), --no-open (bool), --verbose/-v (bool)
 - Validate that --container is provided, exit with usage if not
 - Initialize the Docker client from internal/docker
 - Initialize the API router and start the HTTP server
@@ -122,7 +122,7 @@ Update main.go to wire everything together: create DockerClient, create Router, 
 
 Create a minimal web/static/index.html that just says "Container Visualize - API is working" so we can verify the server starts.
 
-Verify: `go build ./cmd/containervisualize && ./bin/containervisualize -c <test-container>` should start the server, and `curl http://localhost:8080/api/container` should return container JSON.
+Verify: `go build ./cmd/containervisualize && ./bin/containervisualize -c <test-container>` should start the server, and `curl http://localhost:9500/api/container` should return container JSON.
 ```
 
 ### Prompt 1.3: Basic file tree UI

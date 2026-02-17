@@ -299,7 +299,7 @@ ENTRYPOINT ["containervisualize"]
 Usage: mount the Docker socket into the tool's container:
 
 ```bash
-docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -p 8080:8080 \
+docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -p 9500:9500 \
   containervisualize --container my-app --host 0.0.0.0
 ```
 

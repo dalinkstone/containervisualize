@@ -33,7 +33,7 @@ docker run -d --name my-app nginx:latest
 # Visualize it
 containervisualize --container my-app
 
-# Open http://localhost:8080 in your browser
+# Open http://localhost:9500 in your browser
 ```
 
 Or visualize by container ID:
@@ -49,7 +49,7 @@ containervisualize [flags]
 
 Flags:
   --container, -c    Container name or ID (required)
-  --port, -p         Port to serve the web UI (default: 8080)
+  --port, -p         Port to serve the web UI (default: 9500)
   --host             Host to bind to (default: 127.0.0.1)
   --readonly          Disable write operations (upload, edit, delete)
   --depth             Max directory depth to scan initially (default: 3)

@@ -24,8 +24,8 @@ func main() {
 	containerFlag := flag.String("container", "", "container ID or name (required)")
 	flag.StringVar(containerFlag, "c", "", "container ID or name (shorthand)")
 
-	portFlag := flag.Int("port", 8080, "HTTP server port")
-	flag.IntVar(portFlag, "p", 8080, "HTTP server port (shorthand)")
+	portFlag := flag.Int("port", 9500, "HTTP server port")
+	flag.IntVar(portFlag, "p", 9500, "HTTP server port (shorthand)")
 
 	hostFlag := flag.String("host", "127.0.0.1", "HTTP server bind address")
 	readonlyFlag := flag.Bool("readonly", false, "disable write operations")

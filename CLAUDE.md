@@ -276,7 +276,7 @@ make build
 # 2. Run against a container
 ./bin/containervisualize -c test-nginx --no-open -v
 
-# 3. Open http://localhost:8080 in a browser
+# 3. Open http://localhost:9500 in a browser
 #    - You should see the Container Visualize UI with a dark theme
 #    - The header shows "Container Visualize", a search input, and a container badge (name, image, green dot if running)
 #    - The left sidebar shows the file tree starting at /
@@ -308,8 +308,8 @@ make build
 #    - Clicking a result expands parent directories and opens the file
 #    - Press Escape to dismiss search results
 #    - Prefix with "content:" to search file contents (e.g., "content:root")
-curl "http://localhost:8080/api/search?q=hostname&path=/"    # Search by filename
-curl "http://localhost:8080/api/search?q=content:root&path=/"  # Search file contents
+curl "http://localhost:9500/api/search?q=hostname&path=/"    # Search by filename
+curl "http://localhost:9500/api/search?q=content:root&path=/"  # Search file contents
 
 # 7. Test theme toggle:
 #    - Click the theme toggle button (☾) in the header
@@ -326,10 +326,10 @@ curl "http://localhost:8080/api/search?q=content:root&path=/"  # Search file con
 #    - Delete/Backspace (when tree panel focused): Delete selected item (with confirmation)
 
 # 9. Test the API endpoints directly:
-curl http://localhost:8080/api/container          # Container metadata JSON
-curl http://localhost:8080/api/tree?path=/         # Directory listing JSON array
-curl "http://localhost:8080/api/file?path=/etc/hostname"  # File contents with detected Content-Type
-curl -X PUT "http://localhost:8080/api/file?path=/tmp/test.txt" -d "hello world"  # Save file
+curl http://localhost:9500/api/container          # Container metadata JSON
+curl http://localhost:9500/api/tree?path=/         # Directory listing JSON array
+curl "http://localhost:9500/api/file?path=/etc/hostname"  # File contents with detected Content-Type
+curl -X PUT "http://localhost:9500/api/file?path=/tmp/test.txt" -d "hello world"  # Save file
 
 # 10. Test file upload (browser):
 #    - Click the upload button (↟) in the header
@@ -359,26 +359,26 @@ curl -X PUT "http://localhost:8080/api/file?path=/tmp/test.txt" -d "hello world"
 #    - Click Delete → file is removed from tree, editor clears if that file was open
 
 # 14. Test archive download:
-curl "http://localhost:8080/api/archive?path=/etc" --output etc.tar.gz  # Downloads directory as tar.gz
-curl "http://localhost:8080/api/archive?path=/etc/hostname" --output hostname  # Downloads single file
+curl "http://localhost:9500/api/archive?path=/etc" --output etc.tar.gz  # Downloads directory as tar.gz
+curl "http://localhost:9500/api/archive?path=/etc/hostname" --output hostname  # Downloads single file
 
 # 15. Test upload via API:
-curl -X POST "http://localhost:8080/api/file?path=/tmp" -F "file=@/path/to/local/file"  # Upload file
+curl -X POST "http://localhost:9500/api/file?path=/tmp" -F "file=@/path/to/local/file"  # Upload file
 
 # 16. Test delete via API:
-curl -X DELETE "http://localhost:8080/api/file?path=/tmp/test.txt"  # Delete file
-curl -X DELETE "http://localhost:8080/api/file?path=/"  # Should return 403 Forbidden
+curl -X DELETE "http://localhost:9500/api/file?path=/tmp/test.txt"  # Delete file
+curl -X DELETE "http://localhost:9500/api/file?path=/"  # Should return 403 Forbidden
 
 # 17. Test readonly mode:
 ./bin/containervisualize -c test-nginx --no-open --readonly -v
 # Then:
-curl -X PUT http://localhost:8080/api/file?path=/tmp/test     # Should return 403 Forbidden
-curl -X POST http://localhost:8080/api/file?path=/tmp -F "file=@test" # Should return 403 Forbidden
-curl -X DELETE http://localhost:8080/api/file?path=/tmp/test   # Should return 403 Forbidden
+curl -X PUT http://localhost:9500/api/file?path=/tmp/test     # Should return 403 Forbidden
+curl -X POST http://localhost:9500/api/file?path=/tmp -F "file=@test" # Should return 403 Forbidden
+curl -X DELETE http://localhost:9500/api/file?path=/tmp/test   # Should return 403 Forbidden
 # In the browser: upload/delete buttons show "read-only mode" toast, editor is read-only
 
 # 18. Test path validation:
-curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad Request
+curl "http://localhost:9500/api/tree?path=../../../etc"  # Should return 400 Bad Request
 
 # 19. Test connection error handling:
 #    - With the UI open, stop the Docker container: docker stop test-nginx
