@@ -24,6 +24,66 @@ window.showToast = function(message, type) {
     }, 3000);
 };
 
+// Confirmation dialog
+window.showConfirm = function(message, onConfirm, actionLabel) {
+    actionLabel = actionLabel || 'Delete';
+
+    // Remove any existing dialog
+    const existing = document.getElementById('confirm-dialog-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'confirm-dialog-overlay';
+    overlay.className = 'confirm-overlay';
+
+    const dialog = document.createElement('div');
+    dialog.className = 'confirm-dialog';
+
+    const msg = document.createElement('p');
+    msg.className = 'confirm-message';
+    msg.textContent = message;
+    dialog.appendChild(msg);
+
+    const actions = document.createElement('div');
+    actions.className = 'confirm-actions';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'confirm-btn confirm-cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', () => overlay.remove());
+
+    const confirmBtn = document.createElement('button');
+    confirmBtn.className = 'confirm-btn confirm-action';
+    confirmBtn.textContent = actionLabel;
+    confirmBtn.addEventListener('click', () => {
+        overlay.remove();
+        onConfirm();
+    });
+
+    actions.appendChild(cancelBtn);
+    actions.appendChild(confirmBtn);
+    dialog.appendChild(actions);
+    overlay.appendChild(dialog);
+    document.body.appendChild(overlay);
+
+    // Dismiss on Escape
+    const onKey = (e) => {
+        if (e.key === 'Escape') {
+            overlay.remove();
+            document.removeEventListener('keydown', onKey);
+        }
+    };
+    document.addEventListener('keydown', onKey);
+
+    // Dismiss on overlay click (outside dialog)
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+
+    // Focus the cancel button
+    cancelBtn.focus();
+};
+
 document.addEventListener('DOMContentLoaded', async () => {
     const treeContainer = document.getElementById('file-tree');
     const editorContainer = document.getElementById('editor-panel');
@@ -75,6 +135,33 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
     });
 
+    // Wire delete requests from context menu
+    treeContainer.addEventListener('file-delete-request', (e) => {
+        const path = e.detail.path;
+        if (readonly) {
+            window.showToast('Cannot delete in read-only mode', 'error');
+            return;
+        }
+        window.showConfirm(
+            `Are you sure you want to delete ${path}? This cannot be undone.`,
+            async () => {
+                try {
+                    await api.deleteFile(path);
+                    window.showToast(`Deleted ${path}`, 'success');
+                    tree.removeNode(path);
+                    // Clear editor if the deleted file was open
+                    if (editor.currentPath === path) {
+                        editor.clear();
+                    }
+                    setStatus('Ready');
+                } catch (err) {
+                    window.showToast(`Delete failed: ${err.message}`, 'error');
+                }
+            },
+            'Delete'
+        );
+    });
+
     // Wire refresh button
     toolbar.onRefresh(async () => {
         setStatus('Refreshing...');
@@ -83,6 +170,48 @@ document.addEventListener('DOMContentLoaded', async () => {
             setStatus('Ready');
         } catch (err) {
             setStatus(`Error: ${err.message}`);
+        }
+    });
+
+    // Wire upload button
+    toolbar.onUpload(() => {
+        if (readonly) {
+            window.showToast('Cannot upload in read-only mode', 'error');
+            return;
+        }
+        const targetDir = tree.getSelectedDir();
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.addEventListener('change', async () => {
+            if (input.files.length === 0) return;
+            setStatus('Uploading...');
+            for (const file of input.files) {
+                try {
+                    await api.uploadFile(targetDir, file);
+                    window.showToast(`Uploaded ${file.name}`, 'success');
+                } catch (err) {
+                    window.showToast(`Upload failed: ${err.message}`, 'error');
+                }
+            }
+            await tree.refresh();
+            setStatus('Ready');
+        });
+        input.click();
+    });
+
+    // Wire download button
+    toolbar.onDownload(() => {
+        if (editor.currentPath) {
+            api.downloadFile(editor.currentPath);
+        } else if (tree.selectedPath) {
+            if (tree.selectedType === 'directory') {
+                api.downloadArchive(tree.selectedPath);
+            } else {
+                api.downloadFile(tree.selectedPath);
+            }
+        } else {
+            window.showToast('No file or directory selected', 'info');
         }
     });
 

@@ -5,6 +5,8 @@ class Toolbar {
         this.header = headerEl;
         this.badge = document.getElementById('container-badge');
         this.refreshBtn = document.getElementById('btn-refresh');
+        this.uploadBtn = document.getElementById('btn-upload');
+        this.downloadBtn = document.getElementById('btn-download');
     }
 
     setContainerInfo(info) {
@@ -19,6 +21,18 @@ class Toolbar {
     onRefresh(callback) {
         if (this.refreshBtn) {
             this.refreshBtn.addEventListener('click', callback);
+        }
+    }
+
+    onUpload(callback) {
+        if (this.uploadBtn) {
+            this.uploadBtn.addEventListener('click', callback);
+        }
+    }
+
+    onDownload(callback) {
+        if (this.downloadBtn) {
+            this.downloadBtn.addEventListener('click', callback);
         }
     }
 }

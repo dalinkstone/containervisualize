@@ -395,6 +395,65 @@ func (r *tarFileReader) Close() error {
 	return r.closer.Close()
 }
 
+// DeletePath deletes a file or directory inside a container using rm -rf.
+// It never allows deleting the root path "/".
+func (d *DockerClient) DeletePath(ctx context.Context, containerID, path string) error {
+	path, err := ValidatePath(path)
+	if err != nil {
+		return err
+	}
+
+	if path == "/" {
+		return fmt.Errorf("cannot delete root path")
+	}
+
+	execConfig := container.ExecOptions{
+		Cmd:          []string{"rm", "-rf", "--", path},
+		AttachStdout: true,
+		AttachStderr: true,
+	}
+
+	execID, err := d.cli.ContainerExecCreate(ctx, containerID, execConfig)
+	if err != nil {
+		return fmt.Errorf("exec create: %w", err)
+	}
+
+	resp, err := d.cli.ContainerExecAttach(ctx, execID.ID, container.ExecAttachOptions{})
+	if err != nil {
+		return fmt.Errorf("exec attach: %w", err)
+	}
+	defer resp.Close()
+
+	// Read all output to ensure the command completes
+	io.ReadAll(resp.Reader)
+
+	inspectResp, err := d.cli.ContainerExecInspect(ctx, execID.ID)
+	if err != nil {
+		return fmt.Errorf("exec inspect: %w", err)
+	}
+	if inspectResp.ExitCode != 0 {
+		return fmt.Errorf("rm exited with code %d", inspectResp.ExitCode)
+	}
+
+	return nil
+}
+
+// ArchiveDir returns a tar stream of a directory from a container.
+// The caller is responsible for closing the returned reader.
+func (d *DockerClient) ArchiveDir(ctx context.Context, containerID, path string) (io.ReadCloser, error) {
+	path, err := ValidatePath(path)
+	if err != nil {
+		return nil, err
+	}
+
+	reader, _, err := d.cli.CopyFromContainer(ctx, containerID, path)
+	if err != nil {
+		return nil, fmt.Errorf("copy from container: %w", err)
+	}
+
+	return reader, nil
+}
+
 // WriteFile writes content to a file inside a container using CopyToContainer.
 func (d *DockerClient) WriteFile(ctx context.Context, containerID, path string, content io.Reader, size int64) error {
 	path, err := ValidatePath(path)

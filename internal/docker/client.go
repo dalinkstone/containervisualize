@@ -3,7 +3,9 @@ package docker
 import (
 	"context"
 	"fmt"
+	"io"
 
+	"github.com/docker/docker/api/types/container"
 	"github.com/docker/docker/client"
 )
 
@@ -39,6 +41,13 @@ func (d *DockerClient) Ping(ctx context.Context) error {
 		return fmt.Errorf("docker ping failed: %w", err)
 	}
 	return nil
+}
+
+// CopyToContainer copies a tar archive stream into a container at the specified path.
+func (d *DockerClient) CopyToContainer(ctx context.Context, containerID, destPath string, content io.Reader) error {
+	return d.cli.CopyToContainer(ctx, containerID, destPath, content, container.CopyToContainerOptions{
+		AllowOverwriteDirWithFile: true,
+	})
 }
 
 // Close closes the underlying Docker client connection.

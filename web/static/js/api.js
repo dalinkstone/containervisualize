@@ -53,15 +53,32 @@ const api = {
     async uploadFile(dirPath, file) {
         const formData = new FormData();
         formData.append('file', file);
-        await this._fetch(`/api/file?${new URLSearchParams({ path: dirPath })}`, {
+        const resp = await this._fetch(`/api/file?${new URLSearchParams({ path: dirPath })}`, {
             method: 'POST',
             body: formData,
         });
+        return resp.json();
     },
 
     async deleteFile(path) {
-        await this._fetch(`/api/file?${new URLSearchParams({ path })}`, {
+        const resp = await this._fetch(`/api/file?${new URLSearchParams({ path })}`, {
             method: 'DELETE',
         });
+        return resp.json();
+    },
+
+    downloadArchive(path) {
+        const url = `/api/archive?${new URLSearchParams({ path })}`;
+        window.open(url, '_blank');
+    },
+
+    downloadFile(path) {
+        const url = `/api/archive?${new URLSearchParams({ path })}`;
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = path.split('/').pop();
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
     },
 };

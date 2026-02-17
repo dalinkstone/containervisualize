@@ -190,7 +190,23 @@ Implemented:
 - `web/static/js/app.js`: Toast notification system (window.showToast) with success/error/info types, auto-dismiss 3s, slide-in animation. Global Ctrl+S/Cmd+S handler. EditorPanel now receives readonly flag from container info.
 - `web/static/css/style.css`: Added styles for: editor toolbar (save button, md toggle), dirty indicator dot, CodeMirror container (full height), fallback textarea, markdown preview (headers, code, links, lists, hr), toast notifications (positioned bottom-right, colored by type, animated).
 
-**Next: Phase 3** — Upload, delete, download + context menus
+**Phase 3: Upload, delete, download + context menus — COMPLETE**
+
+Implemented:
+- `internal/docker/filesystem.go`: Added `DeletePath(ctx, containerID, path)` — validates path is not "/", executes `rm -rf --` via ContainerExecCreate/ExecAttach, checks exit code. Added `ArchiveDir(ctx, containerID, path)` — returns raw tar stream from CopyFromContainer for the handler to gzip.
+- `internal/docker/client.go`: Added `CopyToContainer(ctx, containerID, destPath, content)` — wraps Docker SDK's CopyToContainer with AllowOverwriteDirWithFile option.
+- `internal/api/handlers.go`:
+  - `handleUploadFile`: Parses multipart form with 50MB limit (http.MaxBytesReader), iterates form files, creates tar archive per file, CopyToContainer to target directory, returns JSON with list of uploaded paths.
+  - `handleDeleteFile`: Validates path is not "/", calls docker.DeletePath, returns success JSON.
+  - `handleGetArchive`: Stats path first — if file, serves with Content-Disposition attachment; if directory, streams through gzip.NewWriter wrapping the tar stream from ArchiveDir, sets Content-Type application/gzip.
+- `web/static/js/api.js`: Added `downloadArchive(path)` (opens /api/archive in new tab), `downloadFile(path)` (creates temporary anchor with download attribute). Updated `uploadFile` and `deleteFile` to return response JSON.
+- `web/static/js/tree.js`: Full rewrite with context menu support. Right-click on tree nodes shows custom context menu: files get Download, Delete, Copy Path; directories get New File, Upload File Here, Download as Archive, Delete, Copy Path. "New File" prompts for filename, creates empty file via PUT. Context menu positioned within viewport bounds, dismissed on click outside or Escape. Added `removeNode(path)` to remove tree items after delete. Added `getSelectedDir()` for toolbar upload target. Added `_refreshDir(dirPath)` to reload a single directory's children. Added drag-and-drop: dragover highlights directory targets, drop uploads files to the hovered directory (or parent of hovered file).
+- `web/static/js/toolbar.js`: Added `onUpload(callback)` and `onDownload(callback)` wiring for new header buttons.
+- `web/static/js/app.js`: Added `window.showConfirm(message, onConfirm, actionLabel)` — modal overlay with dark surface, Cancel/Action buttons, Escape to dismiss, click-outside to dismiss. Wired `file-delete-request` event from tree context menu to show confirmation dialog before calling api.deleteFile. Wired upload button (opens file dialog, uploads to selected directory, refreshes tree). Wired download button (downloads currently open file or selected node). Readonly checks on upload and delete.
+- `web/static/css/style.css`: Added styles for context menu (fixed position, dark surface, rounded corners, hover highlight, danger items, dividers), confirmation dialog (modal overlay, centered dialog, action buttons), drag-and-drop (dashed outline on tree, highlight on drop target).
+- `web/static/index.html`: Added upload (↟) and download (↡) buttons to header-right.
+
+**Next: Phase 4** — Search, theme toggle, keyboard shortcuts, polish
 
 ### Manual Testing
 
@@ -232,17 +248,56 @@ curl http://localhost:8080/api/tree?path=/         # Directory listing JSON arra
 curl "http://localhost:8080/api/file?path=/etc/hostname"  # File contents with detected Content-Type
 curl -X PUT "http://localhost:8080/api/file?path=/tmp/test.txt" -d "hello world"  # Save file
 
-# 7. Test readonly mode:
+# 7. Test file upload (browser):
+#    - Click the upload button (↟) in the header
+#    - Select a file from your computer
+#    - The file uploads to the currently selected directory (or / if nothing selected)
+#    - A green toast notification "Uploaded <filename>" appears
+#    - The file tree refreshes and shows the new file
+
+# 8. Test context menu:
+#    - Right-click a file in the tree → see Download, Delete, Copy Path options
+#    - Right-click a directory → see New File, Upload File Here, Download as Archive, Delete, Copy Path
+#    - Click "Copy Path" → path is copied to clipboard, toast confirms
+#    - Click "New File" → enter a filename → file is created, tree refreshes
+#    - Click "Download" on a file → file downloads
+#    - Click "Download as Archive" on a directory → tar.gz downloads
+#    - Click "Delete" on a file → confirmation dialog appears → confirm → file is removed
+
+# 9. Test drag and drop:
+#    - Drag a file from your desktop onto the tree panel
+#    - The tree panel shows a dashed outline, directories highlight on hover
+#    - Drop the file → it uploads to the hovered directory
+#    - Toast confirms upload, tree refreshes
+
+# 10. Test delete confirmation:
+#    - Right-click a file → Delete → confirmation dialog appears
+#    - Click Cancel → nothing happens
+#    - Click Delete → file is removed from tree, editor clears if that file was open
+
+# 11. Test archive download:
+curl "http://localhost:8080/api/archive?path=/etc" --output etc.tar.gz  # Downloads directory as tar.gz
+curl "http://localhost:8080/api/archive?path=/etc/hostname" --output hostname  # Downloads single file
+
+# 12. Test upload via API:
+curl -X POST "http://localhost:8080/api/file?path=/tmp" -F "file=@/path/to/local/file"  # Upload file
+
+# 13. Test delete via API:
+curl -X DELETE "http://localhost:8080/api/file?path=/tmp/test.txt"  # Delete file
+curl -X DELETE "http://localhost:8080/api/file?path=/"  # Should return 403 Forbidden
+
+# 14. Test readonly mode:
 ./bin/containervisualize -c test-nginx --no-open --readonly -v
 # Then:
 curl -X PUT http://localhost:8080/api/file?path=/tmp/test     # Should return 403 Forbidden
+curl -X POST http://localhost:8080/api/file?path=/tmp -F "file=@test" # Should return 403 Forbidden
 curl -X DELETE http://localhost:8080/api/file?path=/tmp/test   # Should return 403 Forbidden
-# In the browser, the editor should be read-only (no Save button, no editing)
+# In the browser: upload/delete buttons show "read-only mode" toast, editor is read-only
 
-# 8. Test path validation:
+# 15. Test path validation:
 curl "http://localhost:8080/api/tree?path=../../../etc"  # Should return 400 Bad Request
 
-# 9. Stop the server with Ctrl+C (graceful shutdown)
+# 16. Stop the server with Ctrl+C (graceful shutdown)
 ```
 
 ## Things to Avoid

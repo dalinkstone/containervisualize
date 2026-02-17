@@ -1,12 +1,24 @@
-// Container Visualize — File tree component
+// Container Visualize — File tree component with context menu
 
 class FileTree {
     constructor(container) {
         this.container = container;
         this.selectedPath = null;
+        this.selectedType = null;
         this.expandedDirs = new Set();
         this._handleClick = this._handleClick.bind(this);
+        this._handleContextMenu = this._handleContextMenu.bind(this);
         this.container.addEventListener('click', this._handleClick);
+        this.container.addEventListener('contextmenu', this._handleContextMenu);
+
+        // Dismiss context menu on click outside or Escape
+        document.addEventListener('click', () => this._dismissContextMenu());
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') this._dismissContextMenu();
+        });
+
+        // Drag and drop support
+        this._setupDragDrop();
     }
 
     async loadRoot() {
@@ -100,10 +112,249 @@ class FileTree {
         const type = item.dataset.type;
 
         if (type === 'directory') {
+            this.selectedPath = path;
+            this.selectedType = 'directory';
             await this._toggleDir(item, path);
         } else {
+            this.selectedType = 'file';
             this._selectFile(item, path);
         }
+    }
+
+    _handleContextMenu(e) {
+        const item = e.target.closest('.tree-item');
+        if (!item) return;
+
+        e.preventDefault();
+        e.stopPropagation();
+
+        const path = item.dataset.path;
+        const type = item.dataset.type;
+
+        this._showContextMenu(e.clientX, e.clientY, path, type);
+    }
+
+    _showContextMenu(x, y, path, type) {
+        this._dismissContextMenu();
+
+        const menu = document.createElement('div');
+        menu.className = 'context-menu';
+        menu.id = 'tree-context-menu';
+
+        const items = [];
+
+        if (type === 'directory') {
+            items.push({ label: 'New File', action: () => this._contextNewFile(path) });
+            items.push({ label: 'Upload File Here', action: () => this._contextUpload(path) });
+            items.push({ divider: true });
+            items.push({ label: 'Download as Archive', action: () => api.downloadArchive(path) });
+            items.push({ divider: true });
+            items.push({ label: 'Delete', action: () => this._contextDelete(path), danger: true });
+            items.push({ divider: true });
+            items.push({ label: 'Copy Path', action: () => this._contextCopyPath(path) });
+        } else {
+            items.push({ label: 'Download', action: () => api.downloadFile(path) });
+            items.push({ divider: true });
+            items.push({ label: 'Delete', action: () => this._contextDelete(path), danger: true });
+            items.push({ divider: true });
+            items.push({ label: 'Copy Path', action: () => this._contextCopyPath(path) });
+        }
+
+        for (const item of items) {
+            if (item.divider) {
+                const divider = document.createElement('div');
+                divider.className = 'context-menu-divider';
+                menu.appendChild(divider);
+            } else {
+                const btn = document.createElement('button');
+                btn.className = 'context-menu-item';
+                if (item.danger) btn.classList.add('danger');
+                btn.textContent = item.label;
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    this._dismissContextMenu();
+                    item.action();
+                });
+                menu.appendChild(btn);
+            }
+        }
+
+        document.body.appendChild(menu);
+
+        // Position menu, ensuring it stays within viewport
+        const rect = menu.getBoundingClientRect();
+        const maxX = window.innerWidth - rect.width - 8;
+        const maxY = window.innerHeight - rect.height - 8;
+        menu.style.left = `${Math.min(x, maxX)}px`;
+        menu.style.top = `${Math.min(y, maxY)}px`;
+    }
+
+    _dismissContextMenu() {
+        const existing = document.getElementById('tree-context-menu');
+        if (existing) existing.remove();
+    }
+
+    async _contextNewFile(dirPath) {
+        const filename = prompt('Enter filename:');
+        if (!filename) return;
+
+        const filePath = dirPath.endsWith('/') ? dirPath + filename : dirPath + '/' + filename;
+        try {
+            await api.updateFile(filePath, '');
+            window.showToast(`Created ${filename}`, 'success');
+            await this._refreshDir(dirPath);
+        } catch (err) {
+            window.showToast(`Failed to create file: ${err.message}`, 'error');
+        }
+    }
+
+    _contextUpload(dirPath) {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.multiple = true;
+        input.addEventListener('change', async () => {
+            for (const file of input.files) {
+                try {
+                    await api.uploadFile(dirPath, file);
+                    window.showToast(`Uploaded ${file.name}`, 'success');
+                } catch (err) {
+                    window.showToast(`Upload failed: ${err.message}`, 'error');
+                }
+            }
+            await this._refreshDir(dirPath);
+        });
+        input.click();
+    }
+
+    _contextDelete(path) {
+        // Dispatch a custom event so app.js can show the confirmation dialog
+        this.container.dispatchEvent(new CustomEvent('file-delete-request', {
+            bubbles: true,
+            detail: { path },
+        }));
+    }
+
+    _contextCopyPath(path) {
+        navigator.clipboard.writeText(path).then(
+            () => window.showToast('Path copied to clipboard', 'info'),
+            () => window.showToast('Failed to copy path', 'error')
+        );
+    }
+
+    async _refreshDir(dirPath) {
+        // Find the children container for this directory and reload it
+        const childrenEl = this.container.querySelector(`.tree-children[data-path="${CSS.escape(dirPath)}"]`);
+        if (childrenEl && this.expandedDirs.has(dirPath)) {
+            const parentItem = childrenEl.previousElementSibling;
+            const depth = parentItem ? this._getDepth(parentItem) : 0;
+            try {
+                const nodes = await api.getTree(dirPath);
+                childrenEl.innerHTML = '';
+                for (const node of nodes) {
+                    this._renderNode(node, childrenEl, depth + 1);
+                }
+                if (nodes.length === 0) {
+                    childrenEl.innerHTML = '<div class="tree-loading">Empty directory</div>';
+                }
+            } catch (err) {
+                childrenEl.innerHTML = `<div class="tree-loading">Error: ${err.message}</div>`;
+            }
+        } else {
+            // Fallback: full tree refresh
+            await this.refresh();
+        }
+    }
+
+    removeNode(path) {
+        // Remove the tree item and its children container (if directory)
+        const item = this.container.querySelector(`.tree-item[data-path="${CSS.escape(path)}"]`);
+        if (item) {
+            const children = item.nextElementSibling;
+            if (children && children.classList.contains('tree-children')) {
+                children.remove();
+            }
+            item.remove();
+        }
+        this.expandedDirs.delete(path);
+        if (this.selectedPath === path) {
+            this.selectedPath = null;
+            this.selectedType = null;
+        }
+    }
+
+    _setupDragDrop() {
+        this.container.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.container.classList.add('drag-over');
+
+            // Highlight the directory being hovered
+            const item = e.target.closest('.tree-item');
+            this._clearDropHighlight();
+            if (item && item.dataset.type === 'directory') {
+                item.classList.add('drop-target');
+            }
+        });
+
+        this.container.addEventListener('dragleave', (e) => {
+            // Only remove if we're actually leaving the container
+            if (!this.container.contains(e.relatedTarget)) {
+                this.container.classList.remove('drag-over');
+                this._clearDropHighlight();
+            }
+        });
+
+        this.container.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            this.container.classList.remove('drag-over');
+
+            // Determine target directory
+            const item = e.target.closest('.tree-item');
+            let targetDir = '/';
+            if (item) {
+                if (item.dataset.type === 'directory') {
+                    targetDir = item.dataset.path;
+                } else {
+                    // Dropped on a file — use its parent directory
+                    const parts = item.dataset.path.split('/');
+                    parts.pop();
+                    targetDir = parts.join('/') || '/';
+                }
+            }
+            this._clearDropHighlight();
+
+            const files = e.dataTransfer.files;
+            if (files.length === 0) return;
+
+            for (const file of files) {
+                try {
+                    await api.uploadFile(targetDir, file);
+                    window.showToast(`Uploaded ${file.name}`, 'success');
+                } catch (err) {
+                    window.showToast(`Upload failed: ${err.message}`, 'error');
+                }
+            }
+            await this._refreshDir(targetDir);
+        });
+    }
+
+    _clearDropHighlight() {
+        const prev = this.container.querySelector('.drop-target');
+        if (prev) prev.classList.remove('drop-target');
+    }
+
+    getSelectedDir() {
+        if (this.selectedType === 'directory' && this.selectedPath) {
+            return this.selectedPath;
+        }
+        if (this.selectedPath) {
+            // Return parent directory of selected file
+            const parts = this.selectedPath.split('/');
+            parts.pop();
+            return parts.join('/') || '/';
+        }
+        return '/';
     }
 
     async _toggleDir(item, path) {
@@ -149,6 +400,7 @@ class FileTree {
 
         item.classList.add('selected');
         this.selectedPath = path;
+        this.selectedType = item.dataset.type;
 
         this.container.dispatchEvent(new CustomEvent('file-select', {
             bubbles: true,
