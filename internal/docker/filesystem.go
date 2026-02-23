@@ -53,7 +53,7 @@ func (d *DockerClient) ListDir(ctx context.Context, containerID, path string) ([
 	}
 
 	nodes, err := d.listDirExec(ctx, containerID, path)
-	if err != nil {
+	if err != nil || len(nodes) == 0 {
 		// Fallback: use CopyFromContainer and read tar headers
 		nodes, err = d.listDirTar(ctx, containerID, path)
 		if err != nil {
@@ -89,10 +89,18 @@ func (d *DockerClient) listDirExec(ctx context.Context, containerID, path string
 		return nil, fmt.Errorf("reading exec output: %w", err)
 	}
 
-	// Check exit code
+	// Check exit code — poll until exec completes to avoid race between
+	// stream close and metadata update in the Docker API.
 	inspectResp, err := d.cli.ContainerExecInspect(ctx, execID.ID)
 	if err != nil {
 		return nil, fmt.Errorf("exec inspect: %w", err)
+	}
+	for inspectResp.Running {
+		time.Sleep(50 * time.Millisecond)
+		inspectResp, err = d.cli.ContainerExecInspect(ctx, execID.ID)
+		if err != nil {
+			return nil, fmt.Errorf("exec inspect: %w", err)
+		}
 	}
 	if inspectResp.ExitCode != 0 {
 		return nil, fmt.Errorf("ls exited with code %d", inspectResp.ExitCode)
@@ -406,9 +414,18 @@ func (d *DockerClient) DeletePath(ctx context.Context, containerID, path string)
 	// Read all output to ensure the command completes
 	_, _ = io.ReadAll(resp.Reader)
 
+	// Poll until exec completes to avoid race between stream close and
+	// metadata update in the Docker API.
 	inspectResp, err := d.cli.ContainerExecInspect(ctx, execID.ID)
 	if err != nil {
 		return fmt.Errorf("exec inspect: %w", err)
+	}
+	for inspectResp.Running {
+		time.Sleep(50 * time.Millisecond)
+		inspectResp, err = d.cli.ContainerExecInspect(ctx, execID.ID)
+		if err != nil {
+			return fmt.Errorf("exec inspect: %w", err)
+		}
 	}
 	if inspectResp.ExitCode != 0 {
 		return fmt.Errorf("rm exited with code %d", inspectResp.ExitCode)
