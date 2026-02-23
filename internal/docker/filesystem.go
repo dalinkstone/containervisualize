@@ -238,9 +238,17 @@ func (d *DockerClient) listDirTar(ctx context.Context, containerID, path string)
 			return nil, fmt.Errorf("reading tar: %w", err)
 		}
 
-		// The first entry is the directory itself; skip it
-		name := strings.TrimPrefix(header.Name, filepath.Base(path)+"/")
-		if name == "" || name == filepath.Base(path) {
+		// The first entry is the directory itself; skip it.
+		// Docker uses absolute paths for root (/) but relative for other paths.
+		var prefix string
+		if path == "/" {
+			prefix = "/"
+		} else {
+			prefix = filepath.Base(path) + "/"
+		}
+		name := strings.TrimPrefix(header.Name, prefix)
+		name = strings.TrimSuffix(name, "/")
+		if name == "" || name == "." {
 			continue
 		}
 
