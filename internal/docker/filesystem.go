@@ -404,7 +404,7 @@ func (d *DockerClient) DeletePath(ctx context.Context, containerID, path string)
 	defer resp.Close()
 
 	// Read all output to ensure the command completes
-	io.ReadAll(resp.Reader)
+	_, _ = io.ReadAll(resp.Reader)
 
 	inspectResp, err := d.cli.ContainerExecInspect(ctx, execID.ID)
 	if err != nil {

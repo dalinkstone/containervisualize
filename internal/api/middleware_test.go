@@ -14,7 +14,7 @@ func TestPathValidationMiddleware(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Query().Get("path")
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(path))
+		_, _ = w.Write([]byte(path))
 	})
 
 	handler := PathValidationMiddleware(inner)
@@ -99,7 +99,7 @@ func TestPathValidationMiddleware(t *testing.T) {
 func TestReadOnlyMiddleware(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	tests := []struct {
@@ -153,7 +153,7 @@ func TestReadOnlyMiddleware(t *testing.T) {
 func TestLoggingMiddleware(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("ok"))
+		_, _ = w.Write([]byte("ok"))
 	})
 
 	handler := LoggingMiddleware(inner)
@@ -175,7 +175,7 @@ func TestLoggingMiddleware(t *testing.T) {
 func TestLoggingMiddleware_CapturesStatusCode(t *testing.T) {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		w.Write([]byte("not found"))
+		_, _ = w.Write([]byte("not found"))
 	})
 
 	handler := LoggingMiddleware(inner)

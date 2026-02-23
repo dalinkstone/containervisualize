@@ -221,7 +221,7 @@ func (h *Handlers) handleGetArchive(w http.ResponseWriter, r *http.Request) {
 		if size > 0 {
 			w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 		}
-		io.Copy(w, reader)
+		_, _ = io.Copy(w, reader)
 		return
 	}
 
@@ -244,7 +244,7 @@ func (h *Handlers) handleGetArchive(w http.ResponseWriter, r *http.Request) {
 	gz := gzip.NewWriter(w)
 	defer gz.Close()
 
-	io.Copy(gz, tarReader)
+	_, _ = io.Copy(gz, tarReader)
 }
 
 func (h *Handlers) handleSearch(w http.ResponseWriter, r *http.Request) {

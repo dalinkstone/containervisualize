@@ -13,7 +13,7 @@ import (
 func WriteJSON(w http.ResponseWriter, status int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(data)
+	_ = json.NewEncoder(w).Encode(data)
 }
 
 // WriteError writes an APIError JSON response.
@@ -37,5 +37,5 @@ func StreamContent(w http.ResponseWriter, reader io.ReadCloser, filename string,
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", size))
 	}
 	w.WriteHeader(http.StatusOK)
-	io.Copy(w, reader)
+	_, _ = io.Copy(w, reader)
 }

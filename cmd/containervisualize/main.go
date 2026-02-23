@@ -158,5 +158,5 @@ func openBrowser(url string) {
 	default:
 		return
 	}
-	cmd.Run()
+	_ = cmd.Run()
 }
