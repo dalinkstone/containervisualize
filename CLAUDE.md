@@ -10,8 +10,8 @@ Container Visualize is a single-binary Go tool that connects to a running Docker
 
 ## Tech Stack
 
-- **Language:** Go 1.22+ (use stdlib where possible)
-- **HTTP routing:** Go 1.22 `net/http` ServeMux (method + pattern matching) — no third-party routers
+- **Language:** Go 1.24+ (use stdlib where possible)
+- **HTTP routing:** Go 1.22+ `net/http` ServeMux (method + pattern matching) — no third-party routers
 - **Docker SDK:** `github.com/docker/docker/client` — this is the only heavy dependency
 - **Frontend:** Vanilla JavaScript, no frameworks. CodeMirror 5 loaded from CDN for editing.
 - **Embedding:** `go:embed` for all static assets in `web/static/`
@@ -20,24 +20,31 @@ Container Visualize is a single-binary Go tool that connects to a running Docker
 ## Project Structure
 
 ```
-cmd/containervisualize/main.go     → Entry point, CLI flags, server startup
-internal/docker/client.go          → Docker SDK client wrapper
-internal/docker/filesystem.go      → File operations (list, read, write, delete, archive, search)
-internal/docker/container.go       → Container metadata queries
-internal/api/router.go             → HTTP route registration
-internal/api/handlers.go           → Request handlers
-internal/api/middleware.go         → Logging, readonly enforcement, path validation
-internal/api/responses.go          → JSON response helpers
-internal/model/types.go            → Shared types (FileNode, ContainerInfo, APIError)
-web/embed.go                       → go:embed directives
-web/static/index.html              → Single-page app shell
-web/static/css/style.css           → All styles (dark/light theme via CSS custom properties)
-web/static/js/api.js               → Fetch wrapper for backend API
-web/static/js/tree.js              → File tree component
-web/static/js/editor.js            → CodeMirror wrapper and file viewer
-web/static/js/toolbar.js           → Upload, download, search, theme toggle controls
-web/static/js/codemirror-loader.js → Dynamic CDN loader for CodeMirror 5
-web/static/js/app.js               → App init and state management
+cmd/containervisualize/main.go                    → Entry point, CLI flags (incl. --version), server startup
+internal/docker/client.go                         → Docker SDK client wrapper
+internal/docker/filesystem.go                     → File operations (list, read, write, delete, archive, search)
+internal/docker/filesystem_test.go                → Unit tests (ValidatePath, parseLsLine, sanitizeSearchQuery, sortNodes, demuxExecOutput, fuzz)
+internal/docker/filesystem_integration_test.go    → Integration tests (testcontainers-go, //go:build integration)
+internal/docker/container.go                      → Container metadata queries
+internal/api/router.go                            → HTTP route registration
+internal/api/handlers.go                          → Request handlers
+internal/api/middleware.go                        → Logging, readonly enforcement, path validation
+internal/api/middleware_test.go                   → Middleware unit tests
+internal/api/responses.go                         → JSON response helpers
+internal/model/types.go                           → Shared types (FileNode, ContainerInfo, APIError)
+web/embed.go                                      → go:embed directives
+web/static/index.html                             → Single-page app shell
+web/static/css/style.css                          → All styles (dark/light theme via CSS custom properties)
+web/static/js/api.js                              → Fetch wrapper for backend API
+web/static/js/tree.js                             → File tree component with context menus
+web/static/js/editor.js                           → CodeMirror wrapper and file viewer
+web/static/js/toolbar.js                          → Search, theme toggle, upload/download controls
+web/static/js/codemirror-loader.js                → Dynamic CDN loader for CodeMirror 5
+web/static/js/app.js                              → App init, state management, keyboard shortcuts
+Dockerfile                                        → Multi-stage build (golang:1.24-alpine → alpine:3.19)
+Makefile                                          → Build, test, lint, release, docker targets
+.github/workflows/ci.yml                          → CI: test, lint, integration on push/PR
+.github/workflows/release.yml                     → Release binaries on tag push (v*)
 ```
 
 ## Key Architecture Rules
@@ -88,8 +95,14 @@ make lint                     # requires golangci-lint
 # Format
 make fmt
 
+# Build Docker image
+make docker                   # → containervisualize:latest
+
 # Cross-compile release binaries
 make release                  # → bin/containervisualize-{os}-{arch}
+
+# Check version
+./bin/containervisualize --version
 ```
 
 ## API Endpoints
@@ -263,7 +276,40 @@ Implemented:
   - Search integration: `toolbar.onSearchSelect()` calls `tree.navigateToFile()` to expand parents and select the file
   - API errors shown as toast notifications
 
-**Next: Phase 5** — Tests, Makefile, CI/CD, Dockerfile, release
+**Phase 5: Tests, Makefile, CI/CD, Dockerfile, release — COMPLETE**
+
+Implemented:
+- `cmd/containervisualize/main.go`: Added `var version = "dev"` at package level (overridden via `-X main.version=...` ldflags during build). Added `--version` flag that prints version and exits before any Docker operations.
+- `internal/docker/filesystem_test.go`: Unit tests:
+  - `TestValidatePath` — 13 table-driven cases: valid paths (root, nested, cleans dotdot, trailing slash, double slash), invalid paths (relative, dotdot at start, null byte, empty, bare dotdot, dot only)
+  - `TestParseLsLine` — 8 cases: regular file, directory, symlink, file with spaces, very large file, root dir path, unparseable line, empty line
+  - `TestSanitizeSearchQuery` — 13 cases: normal query, alphanumeric, spaces, dash/underscore, path separator, shell special chars (`;`, backtick, `$`, `|`, `&`, parens all stripped), all special chars, empty string
+  - `TestSortNodes` — verifies directories first, alphabetical within groups
+  - `TestSortNodes_CaseInsensitive` — verifies case-insensitive ordering
+  - `TestDemuxExecOutput` — 4 cases: Docker multiplexed stream, stderr ignored, non-multiplexed fallback, empty input
+  - `TestParseLsOutput` — verifies dot entries and total line are skipped
+  - `FuzzValidatePath` — 8 seed values, checks absolute path result, no null bytes, idempotency
+- `internal/api/middleware_test.go`: Unit tests:
+  - `TestPathValidationMiddleware` — 7 cases: valid path cleaned, trailing slash cleaned, root passes, relative path returns 400, dotdot cleans to valid path, missing path param passes through, empty path value passes through
+  - `TestReadOnlyMiddleware` — 9 cases: PUT/POST/DELETE blocked in readonly mode, GET passes, all methods pass when not readonly, non-API paths pass through even in readonly
+  - `TestLoggingMiddleware` — verifies no panic and response passes through
+  - `TestLoggingMiddleware_CapturesStatusCode` — verifies non-200 status codes captured
+- `internal/docker/filesystem_integration_test.go`: Integration tests (`//go:build integration`):
+  - Uses `testcontainers-go` to spin up nginx:alpine container in `TestMain`
+  - `TestListDir_Root` — lists `/`, verifies etc/var/usr directories exist
+  - `TestListDir_Nested` — lists `/etc/nginx`, verifies nginx.conf exists with type "file"
+  - `TestReadFile` — reads `/etc/nginx/nginx.conf`, verifies positive size and "worker_processes" in content
+  - `TestWriteFile` — writes test content to `/tmp/integration-test.txt`, reads back, verifies match
+  - `TestDeletePath` — writes file, verifies exists via StatPath, deletes, verifies StatPath fails
+  - `TestSearchFiles` — searches for "nginx.conf" in `/etc`, verifies found in results
+  - `TestDeletePath_RootRejected` — verifies DeletePath("/") returns error
+- `Dockerfile`: Multi-stage build: `golang:1.24-alpine` builder (installs git, downloads deps, builds with ldflags) → `alpine:3.19` runtime with `ca-certificates`. Entrypoint is `containervisualize`.
+- `.github/workflows/ci.yml`: Triggers on push/PR to master. Three jobs: `test` (make test + make build + verify --version), `lint` (golangci-lint-action@v6), `integration` (make test-integration). All use Go 1.24.
+- `.github/workflows/release.yml`: Triggers on tag push (`v*`). Builds release binaries via `make release`, creates GitHub release with `softprops/action-gh-release@v2` including all cross-compiled binaries.
+- `Makefile`: Added `docker` target (`docker build -t containervisualize --build-arg VERSION=$(VERSION) .`). Added `docker` to `.PHONY` list.
+- `go.mod`: Added `testcontainers-go` dependency for integration tests.
+
+**All 5 phases are now complete. The project is production-ready.**
 
 ### Manual Testing
 

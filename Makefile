@@ -2,7 +2,7 @@ VERSION := $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev
 BINARY := containervisualize
 LDFLAGS := -s -w -X main.version=$(VERSION)
 
-.PHONY: build test test-integration lint clean release fmt dev
+.PHONY: build test test-integration lint clean release fmt dev docker
 
 build:
 	CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o bin/$(BINARY) ./cmd/containervisualize
@@ -31,3 +31,6 @@ fmt:
 
 dev:
 	go run ./cmd/containervisualize --container $(CONTAINER) --verbose
+
+docker:
+	docker build -t $(BINARY) --build-arg VERSION=$(VERSION) .

@@ -19,10 +19,14 @@ import (
 	"github.com/dalinkstone/containervisualize/web"
 )
 
+var version = "dev"
+
 func main() {
 	// CLI flags
 	containerFlag := flag.String("container", "", "container ID or name (required)")
 	flag.StringVar(containerFlag, "c", "", "container ID or name (shorthand)")
+
+	versionFlag := flag.Bool("version", false, "print version and exit")
 
 	portFlag := flag.Int("port", 9500, "HTTP server port")
 	flag.IntVar(portFlag, "p", 9500, "HTTP server port (shorthand)")
@@ -37,6 +41,11 @@ func main() {
 	flag.BoolVar(verboseFlag, "v", false, "enable verbose logging (shorthand)")
 
 	flag.Parse()
+
+	if *versionFlag {
+		fmt.Printf("containervisualize %s\n", version)
+		os.Exit(0)
+	}
 
 	// Validate required flags
 	if *containerFlag == "" {
